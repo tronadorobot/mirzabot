@@ -354,6 +354,7 @@ include __DIR__ . '/inc/layout_head.php';
                                     'aqayepardakht' => $textbotlang['panel']['userMethodAqayePardakht'],
                                     'plisio' => 'Plisio',
                                     'nowpayment' => 'NowPayment',
+                                    'Tronado' => 'Tronado',
                                     'Star Telegram' => $textbotlang['panel']['userMethodTelegramStar'],
                                     'Currency Rial 1' => $textbotlang['panel']['userMethodRial1'],
                                     'Currency Rial tow' => $textbotlang['panel']['userMethodRial2'],

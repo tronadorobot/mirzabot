@@ -317,6 +317,15 @@ if (
         ['text' => $textbotlang['textbot']['iranPay4'], 'callback_data' => "iranpay4"]
     ];
 }
+// Tronado: switched on by the admin, and every secret it needs is in place
+// (API key, IPN signing key, TRX wallet). Without all three the link cannot be
+// created, and the button is the wrong place for the buyer to find that out.
+$tronadostatus = getPaySettingValue("statustronado", "offtronado");
+if ($tronadostatus == "ontronado" && function_exists('tronadoConfigured') && tronadoConfigured()) {
+    $step_payment['inline_keyboard'][] = [
+        ['text' => $textbotlang['textbot']['tronado'], 'callback_data' => "tronado"]
+    ];
+}
 if ($arzireyali3 == "oniranpay3" && $paymentexits >= 2) {
     $step_payment['inline_keyboard'][] = [
         ['text' => $textbotlang['textbot']['iranPay1'], 'callback_data' => "iranpay3"]
@@ -1233,6 +1242,16 @@ $abangatewaykeyboard = json_encode([
         [['text' => $textbotlang['keyboard']['minAmountIranPay4']], ['text' => $textbotlang['keyboard']['maxAmountIranPay4']]],
         [['text' => $textbotlang['keyboard']['cashbackIranPay4']]],
         [['text' => $textbotlang['keyboard']['setEducationIranPay4']]],
+        [['text' => $textbotlang['Admin']['backAdminBtn']], ['text' => $textbotlang['Admin']['backMenuBtn']]]
+    ],
+    'resize_keyboard' => true
+]);
+$tronadokeyboard = json_encode([
+    'keyboard' => [
+        [['text' => $textbotlang['keyboard']['apiTronado']], ['text' => $textbotlang['keyboard']['ipnKeyTronado']]],
+        [['text' => $textbotlang['keyboard']['walletTronado']]],
+        [['text' => $textbotlang['keyboard']['minAmountTronado']], ['text' => $textbotlang['keyboard']['maxAmountTronado']]],
+        [['text' => $textbotlang['keyboard']['cashbackTronado']], ['text' => $textbotlang['keyboard']['setEducationTronado']]],
         [['text' => $textbotlang['Admin']['backAdminBtn']], ['text' => $textbotlang['Admin']['backMenuBtn']]]
     ],
     'resize_keyboard' => true

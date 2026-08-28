@@ -85,6 +85,17 @@ $values = [
     'minbalanceiranpay4' => '20000',
     'maxbalanceiranpay4' => '1000000',
     'chashbackiranpay4' => '0',
+    // Tronado (card-to-card, settled in TRX). Off until the admin has pasted
+    // the API key, the IPN signing key and a TRX wallet — keyboard.php checks
+    // all three before showing the buyer a button.
+    'statustronado' => 'offtronado',
+    'apitronado' => '0',
+    'ipnkeytronado' => '0',
+    'wallettronado' => '0',
+    'minbalancetronado' => '50000',
+    'maxbalancetronado' => '500000',
+    'chashbacktronado' => '0',
+    'helptronado' => '2',
     'helpperfectmony' => '2',
     'helpzarinpal' => '2',
     'helpnowpayment' => '2',

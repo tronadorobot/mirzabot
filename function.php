@@ -785,6 +785,421 @@ function createPayiranpay4($price, $order_id)
     return json_decode($response, true) ?: ['success' => false, 'message' => 'iranpay4: bad response'];
 }
 
+/*
+ * ---------------------------------------------------------------------------
+ * Tronado — card-to-card gateway settled in TRX (https://bot.tronado.cloud)
+ *
+ * The shop obtains an API key and an IPN signing key from Tronado support
+ * (@trndsupport) and pastes them, plus its own TRX wallet, in the admin bot.
+ * Flow: price (Toman) -> TRX at Tronado's rate -> GetOrderToken v5 -> buyer is
+ * sent to the Tronado mini app -> signed IPN hits payment/tronado.php, with
+ * cronbot/tronado.php polling as a fallback. Everything the two settlement
+ * paths share lives here so they cannot drift apart.
+ *
+ * The buyer always pays Tronado's fee on top (wageFromBusinessPercentage=0):
+ * it is the one mode where "the shop received the full TRX it invoiced" is an
+ * exact check, which is what keeps a repriced order from being credited in
+ * full.
+ * ---------------------------------------------------------------------------
+ */
+const TRONADO_API_BASE = 'https://bot.tronado.cloud';
+const TRONADO_PAY_PAGE = 'https://t.me/tronado_robot/customerpayment?startapp=';
+const TRONADO_STATUS_PAYMENT_ACCEPTED = 30;
+// PaymentRejected, Expired, Cancelled: the buyer will not be paying this one.
+const TRONADO_CLOSED_STATUSES = [40, 100, 200];
+
+/** A PaySetting value, with this table's "0 means unset" convention applied. */
+function tronadoSetting(string $name): string
+{
+    $value = trim((string) getPaySettingValue($name, ''));
+    return $value === '0' ? '' : $value;
+}
+
+function tronadoWalletIsValid(string $wallet): bool
+{
+    return preg_match('/^T[1-9A-HJ-NP-Za-km-z]{33}$/', $wallet) === 1;
+}
+
+/** Every secret the gateway needs is present. The buyer button keys off this. */
+function tronadoConfigured(): bool
+{
+    return tronadoSetting('apitronado') !== ''
+        && tronadoSetting('ipnkeytronado') !== ''
+        && tronadoWalletIsValid(tronadoSetting('wallettronado'));
+}
+
+function tronadoCallbackUrl(): string
+{
+    global $domainhosts;
+    return "https://$domainhosts/payment/tronado.php";
+}
+
+/**
+ * POST JSON to Tronado. Always sends a body (at least "{}"): IIS answers a
+ * body-less POST with 411, which is easy to mistake for a 404.
+ */
+function tronadoPost(string $path, array $body, ?string $apiKey = null, int $timeout = 25): array
+{
+    $headers = ['Content-Type: application/json', 'Accept: application/json'];
+    if ($apiKey !== null && $apiKey !== '') {
+        $headers[] = 'x-api-key: ' . $apiKey;
+    }
+    $curl = curl_init();
+    curl_setopt_array($curl, [
+        CURLOPT_URL => TRONADO_API_BASE . $path,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => min(10, $timeout),
+        CURLOPT_TIMEOUT => $timeout,
+        CURLOPT_CUSTOMREQUEST => 'POST',
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_POSTFIELDS => json_encode((object) $body, JSON_UNESCAPED_UNICODE),
+    ]);
+    $raw = curl_exec($curl);
+    $http = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    $error = curl_error($curl);
+    curl_close($curl);
+    $json = is_string($raw) ? json_decode($raw, true) : null;
+
+    return [
+        'http' => $http,
+        'json' => is_array($json) ? $json : null,
+        'raw' => is_string($raw) ? $raw : '',
+        'error' => $error,
+    ];
+}
+
+/** Tronado's own TRX price in Toman: it is not the exchange rate, and it is the only one the invoice adds up with. */
+function tronadoTronPriceToman(): ?int
+{
+    $res = tronadoPost('/Tron/GetPriceToToman', []);
+    $price = $res['json']['TronPriceToman'] ?? null;
+
+    return is_numeric($price) && (int) $price > 0 ? (int) $price : null;
+}
+
+/**
+ * Create a Tronado order for a Toman price and return the mini-app pay link.
+ *
+ * The invoice is denominated in TRX at Tronado's own rate; the buyer pays the
+ * fee on top and the shop receives the full TRX. The shop credits the buyer
+ * its own Toman price, like every other gateway here.
+ */
+function createPayTronado($price, $order_id): array
+{
+    if (!tronadoConfigured()) {
+        return ['success' => false, 'message' => 'tronado: api key, ipn signing key or wallet is unset'];
+    }
+    $tronPrice = tronadoTronPriceToman();
+    if ($tronPrice === null) {
+        return ['success' => false, 'message' => 'tronado: could not read the TRX price'];
+    }
+    $trx = round(intval($price) / $tronPrice, 6);
+    if ($trx < 0.001) {
+        return ['success' => false, 'message' => 'tronado: invoice below the 0.001 TRX minimum'];
+    }
+    $wallet = tronadoSetting('wallettronado');
+
+    $res = tronadoPost('/api/v5/GetOrderToken?wageFromBusinessPercentage=0', [
+        'PaymentID' => (string) $order_id,
+        'WalletAddress' => $wallet,
+        'TronAmount' => $trx,
+        'CallbackUrl' => tronadoCallbackUrl(),
+    ], tronadoSetting('apitronado'));
+
+    $json = $res['json'];
+    if ($res['http'] !== 200 || !is_array($json)) {
+        return ['success' => false, 'message' => 'tronado: unexpected answer (http ' . $res['http'] . ') ' . $res['error']];
+    }
+    if (empty($json['IsSuccessful']) || empty($json['Data']['Token'])) {
+        $message = $json['Message'] ?? ($json['Data']['ErrorMessage'] ?? 'unknown error');
+
+        return ['success' => false, 'code' => $json['Code'] ?? null, 'message' => 'tronado: ' . $message];
+    }
+
+    $token = (string) $json['Data']['Token'];
+
+    return [
+        'success' => true,
+        'token' => $token,
+        'payment_link' => TRONADO_PAY_PAGE . rawurlencode($token),
+        'trx' => $trx,
+        'trx_price' => $tronPrice,
+        'wallet' => $wallet,
+        'estimated_toman' => $json['Data']['EstimatedTomanAmount'] ?? null,
+    ];
+}
+
+/** Tronado's view of one of our orders, or null when it cannot be read right now. */
+function tronadoGetStatusByPaymentId(string $paymentId, int $timeout = 25): ?array
+{
+    $apiKey = tronadoSetting('apitronado');
+    if ($apiKey === '') {
+        return null;
+    }
+    $res = tronadoPost('/Order/GetStatusByPaymentID/' . rawurlencode($paymentId), ['Id' => $paymentId], $apiKey, $timeout);
+    if ($res['http'] !== 200 || $res['json'] === null || isset($res['json']['Error'])) {
+        return null;
+    }
+
+    return $res['json'];
+}
+
+/** What this bot recorded about the Tronado order, kept as JSON in dec_not_confirmed. */
+function tronadoOrderMeta(array $paymentReport): array
+{
+    $meta = json_decode((string) ($paymentReport['dec_not_confirmed'] ?? ''), true);
+
+    return is_array($meta) ? $meta : [];
+}
+
+function tronadoStoreMeta(string $orderId, array $meta): void
+{
+    global $pdo;
+    // HEX flags: upstream report templates paste dec_not_confirmed raw into
+    // Telegram HTML messages, so nothing stored here may look like markup.
+    $json = json_encode($meta, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+    $stmt = $pdo->prepare("UPDATE Payment_report SET dec_not_confirmed = :meta WHERE id_order = :id_order");
+    $stmt->execute([':meta' => $json, ':id_order' => $orderId]);
+    clearSelectCache('Payment_report');
+}
+
+/**
+ * The settlement anchor (token, invoiced TRX, wallet) carries an HMAC under
+ * the IPN signing key. dec_not_confirmed is also written by upstream's receipt
+ * flows from buyer-controlled input, and a buyer must not be able to move the
+ * bar the paid-checks measure against.
+ */
+function tronadoMetaSignature(array $meta): string
+{
+    $canonical = json_encode([
+        'token' => (string) ($meta['token'] ?? ''),
+        'trx' => (string) ($meta['trx'] ?? ''),
+        'wallet' => (string) ($meta['wallet'] ?? ''),
+    ]);
+
+    return hash_hmac('sha256', (string) $canonical, tronadoSetting('ipnkeytronado'));
+}
+
+function tronadoSealMeta(array $meta): array
+{
+    $meta['sig'] = tronadoMetaSignature($meta);
+
+    return $meta;
+}
+
+function tronadoMetaIsSealed(array $meta): bool
+{
+    $sig = (string) ($meta['sig'] ?? '');
+
+    return $sig !== '' && tronadoSetting('ipnkeytronado') !== '' && hash_equals(tronadoMetaSignature($meta), $sig);
+}
+
+/** Store a gateway secret without update()'s plaintext audit line in log.txt. */
+function tronadoStoreSecret(string $name, string $value): void
+{
+    global $pdo;
+    $stmt = $pdo->prepare("UPDATE PaySetting SET ValuePay = :value WHERE NamePay = :name");
+    $stmt->execute([':value' => $value, ':name' => $name]);
+    clearSelectCache('PaySetting');
+}
+
+/**
+ * Check a "paid" payload (IPN body or GetStatusByPaymentID answer) against
+ * what this bot invoiced. Returns '' when it settles the order, otherwise the
+ * reason it does not.
+ *
+ * $expectToken: the IPN's UniqueCode is the GetOrderToken token, the status
+ * endpoint's is not, so the token is only compared on IPN payloads.
+ */
+function tronadoPaidPayloadMismatch(array $paymentReport, array $payload, bool $expectToken): string
+{
+    $meta = tronadoOrderMeta($paymentReport);
+    if (!tronadoMetaIsSealed($meta)) {
+        return 'order record unsealed or tampered';
+    }
+    $paymentId = (string) ($payload['PaymentId'] ?? $payload['PaymentID'] ?? '');
+    if ($paymentId === '' || $paymentId !== (string) $paymentReport['id_order']) {
+        return 'payment id mismatch';
+    }
+    if ((int) ($payload['OrderStatusID'] ?? 0) !== TRONADO_STATUS_PAYMENT_ACCEPTED || empty($payload['IsPaid'])) {
+        return 'not PaymentAccepted';
+    }
+    if ($expectToken) {
+        $token = (string) ($meta['token'] ?? '');
+        if ($token === '' || strcasecmp((string) ($payload['UniqueCode'] ?? ''), $token) !== 0) {
+            return 'token mismatch';
+        }
+    }
+    $wallet = (string) ($meta['wallet'] ?? '');
+    if ($wallet === '' || (string) ($payload['Wallet'] ?? '') !== $wallet) {
+        return 'wallet mismatch';
+    }
+    $requested = (float) ($meta['trx'] ?? 0);
+    $delivered = (float) ($payload['TronAmount'] ?? 0);
+    if ($requested <= 0 || $delivered <= 0) {
+        return 'amount missing';
+    }
+    // The buyer pays Tronado's fee on top of the invoice, so the shop must
+    // receive the full TRX it asked for. Anything short means the order was
+    // repriced after creation (typically a reviewer accepting a smaller
+    // card-to-card transfer), and what to credit is a human's call.
+    // ActualTronAmount is deliberately not consulted: not every reprice path
+    // on Tronado's side snapshots it.
+    if ($delivered + 0.00001 < $requested) {
+        return 'amount short (' . $delivered . ' of ' . $requested . ' TRX)';
+    }
+    // Second layer, v5 callbacks only: with the fee on the buyer, the Toman
+    // they paid can only fall below the shop's own invoice after a reprice.
+    $price = intval($paymentReport['price'] ?? 0);
+    if ($price > 0 && isset($payload['UserPaidTomanAmount']) && is_numeric($payload['UserPaidTomanAmount'])
+        && (float) $payload['UserPaidTomanAmount'] < $price * 0.9) {
+        return 'toman paid below invoice (' . $payload['UserPaidTomanAmount'] . ' of ' . $price . ')';
+    }
+
+    return '';
+}
+
+/**
+ * Something about a paid order did not add up. Nothing is credited; the admin
+ * report channel hears about it so a human can look.
+ */
+function tronadoReportProblem(array $paymentReport, string $reason, array $payload): void
+{
+    global $textbotlang;
+    $orderId = (string) $paymentReport['id_order'];
+    $meta = tronadoOrderMeta($paymentReport);
+    if (($meta['problem']['reason'] ?? null) === $reason) {
+        // Already on record and already reported; the poll cron skips such
+        // rows, and a retried IPN should not page the admin again.
+        return;
+    }
+    error_log("tronado: order {$orderId} not settled: {$reason}");
+    $meta['problem'] = ['reason' => $reason, 'at' => gmdate('c'), 'payload' => $payload];
+    tronadoStoreMeta($orderId, $meta);
+
+    $setting = select("setting", "*");
+    if (strlen((string) ($setting['Channel_Report'] ?? '')) > 0) {
+        $errorreport = select("topicid", "idreport", "report", "errorreport", "select")['idreport'] ?? null;
+        telegram('sendmessage', [
+            'chat_id' => $setting['Channel_Report'],
+            'message_thread_id' => $errorreport,
+            'text' => sprintf(
+                $textbotlang['paymentGateway']['tronadoProblem'],
+                $orderId,
+                $paymentReport['id_user'],
+                htmlspecialchars($reason, ENT_QUOTES, 'UTF-8')
+            ),
+            'parse_mode' => 'HTML',
+        ]);
+    }
+}
+
+/**
+ * Credit a Tronado order that Tronado confirmed as PaymentAccepted.
+ *
+ * Exactly one credit per order, whichever path arrives first: claimPaymentPaid
+ * is the gate, and it is taken before delivery rather than after. Returns true
+ * when this call did the credit, false when it had already been done.
+ */
+function tronadoSettleOrder(array $paymentReport, array $confirmed, string $source): bool
+{
+    global $textbotlang;
+    $orderId = (string) $paymentReport['id_order'];
+    if (!claimPaymentPaid($orderId)) {
+        return false;
+    }
+
+    $meta = tronadoOrderMeta($paymentReport);
+    $meta['settled'] = [
+        'source' => $source,
+        'at' => gmdate('c'),
+        'hash' => $confirmed['Hash'] ?? null,
+        'trx' => $confirmed['TronAmount'] ?? null,
+        'user_paid_toman' => $confirmed['UserPaidTomanAmount'] ?? null,
+        'toman_without_wage' => $confirmed['TomanAmountWithoutWage'] ?? null,
+    ];
+    tronadoStoreMeta($orderId, $meta);
+
+    $setting = select("setting", "*");
+    $channel = (string) ($setting['Channel_Report'] ?? '');
+    try {
+        DirectPayment($orderId, "../images.jpg");
+    } catch (Throwable $error) {
+        error_log("tronado: DirectPayment failed for {$orderId}: " . $error->getMessage());
+        if ($channel !== '') {
+            $errorreport = select("topicid", "idreport", "report", "errorreport", "select")['idreport'] ?? null;
+            telegram('sendmessage', [
+                'chat_id' => $channel,
+                'message_thread_id' => $errorreport,
+                'text' => sprintf(
+                    $textbotlang['paymentGateway']['tronadoDeliveryFailed'],
+                    $orderId,
+                    htmlspecialchars($error->getMessage(), ENT_QUOTES, 'UTF-8')
+                ),
+                'parse_mode' => 'HTML',
+            ]);
+        }
+
+        return true;
+    }
+
+    $price = intval($paymentReport['price']);
+    $buyer = select("user", "*", "id", $paymentReport['id_user'], "select");
+    $cashback = intval(getPaySettingValue('chashbacktronado', '0'));
+    if ($cashback > 0 && $buyer) {
+        $reward = intval($price * $cashback / 100);
+        if ($reward > 0) {
+            update("user", "Balance", intval($buyer['Balance']) + $reward, "id", $buyer['id']);
+            sendmessage($buyer['id'], sprintf($textbotlang['paymentGateway']['giftReport'], number_format($reward)), null, 'HTML');
+        }
+    }
+
+    if ($channel !== '') {
+        $paymentreports = select("topicid", "idreport", "report", "paymentreport", "select")['idreport'] ?? null;
+        telegram('sendmessage', [
+            'chat_id' => $channel,
+            'message_thread_id' => $paymentreports,
+            'text' => sprintf(
+                $textbotlang['paymentGateway']['reportTronadoGateway'],
+                $buyer['username'] ?? '',
+                $paymentReport['id_user'],
+                number_format($price),
+                (string) (float) ($confirmed['TronAmount'] ?? 0),
+                htmlspecialchars((string) ($confirmed['Hash'] ?? '-'), ENT_QUOTES, 'UTF-8')
+            ),
+            'parse_mode' => 'HTML',
+        ]);
+    }
+
+    return true;
+}
+
+/**
+ * Tronado will not be collecting this order (rejected, expired or cancelled on
+ * its side). Free the row so the buyer can start a fresh one, and tell them.
+ * A later PaymentAccepted still settles it: claimPaymentPaid does not care
+ * what the row said before.
+ */
+function tronadoCloseOrder(array $paymentReport, int $statusId, string $source): void
+{
+    global $pdo, $textbotlang;
+    $orderId = (string) $paymentReport['id_order'];
+    $newStatus = $statusId === 40 ? 'reject' : 'expire';
+    $stmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = :status WHERE id_order = :id_order AND payment_Status = 'Unpaid'");
+    $stmt->execute([':status' => $newStatus, ':id_order' => $orderId]);
+    if ($stmt->rowCount() < 1) {
+        return;
+    }
+    clearSelectCache('Payment_report');
+    $meta = tronadoOrderMeta($paymentReport);
+    $meta['closed'] = ['status' => $statusId, 'source' => $source, 'at' => gmdate('c')];
+    tronadoStoreMeta($orderId, $meta);
+    if (!empty($paymentReport['message_id'])) {
+        deletemessage($paymentReport['id_user'], $paymentReport['message_id']);
+    }
+    sendmessage($paymentReport['id_user'], sprintf($textbotlang['users']['Balance']['tronadoOrderClosed'], $orderId), null, 'HTML');
+}
+
 function trnado($order_id, $price)
 {
     global $domainhosts;
@@ -1722,6 +2137,7 @@ function activecron()
         "*/5 * * * * curl https://$domainhosts/cronbot/payment_expire.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/sendmessage.php",
         "*/3 * * * * curl https://$domainhosts/cronbot/plisio.php",
+        "*/3 * * * * curl https://$domainhosts/cronbot/tronado.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/activeconfig.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/disableconfig.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/iranpay1.php",

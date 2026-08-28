@@ -29,7 +29,8 @@ while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
         'perfect' => $textbotlang['common']['gateways']['perfectMoney'],
         'paymentnotverify' => $textbotlang['textbot']['paymentNotVerify'],
         'Star Telegram' => $textbotlang['textbot']['starTelegram'],
-        'nowpayment' => $textbotlang['textbot']['cryptoPayment']
+        'nowpayment' => $textbotlang['textbot']['cryptoPayment'],
+        'Tronado' => $textbotlang['textbot']['tronado']
         
     ][$result['Payment_Method']];
     $textexpire = sprintf($textbotlang['users']['Balance']['invoiceExpired'], $status_var, $result['id_order'], $result['price']);

@@ -266,6 +266,7 @@ if (in_array($text, $textadmin) || $datain == "admin") {
                 'Currency Rial 2' => $textbotlang['textbot']['iranPay3'],
                 'Currency Rial 3' => $textbotlang['textbot']['iranPay1'],
                 'paymentnotverify' => $textbotlang['textbot']['paymentNotVerify'],
+                'Tronado' => $textbotlang['textbot']['tronado'],
                 'Star Telegram' => $textbotlang['textbot']['starTelegram']
 
             ][$tracepay['Payment_Method']];
@@ -6484,6 +6485,103 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     step('home', $from_id);
 } elseif ($datain == "iranpay4setting" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['users']['selectoption'], $abangatewaykeyboard, 'HTML');
+} elseif ($text == $textbotlang['keyboard']['apiTronado'] && $adminrulecheck['rule'] == "administrator") {
+    // Secrets are never echoed back; the prompt only says whether one is set.
+    $state = tronadoSetting('apitronado') !== '' ? '✅' : '❌';
+    sendmessage($from_id, sprintf($textbotlang['keyboard']['askApiTronado'], tronadoCallbackUrl(), $state), $backadmin, 'HTML');
+    step('apitronado', $from_id);
+} elseif ($user['step'] == "apitronado") {
+    $candidate = trim((string) $text);
+    if (!preg_match('/^[\x21-\x7E]{16,200}$/', $candidate)) {
+        sendmessage($from_id, $textbotlang['keyboard']['tronadoValueInvalid'], $tronadokeyboard, 'HTML');
+    } else {
+        tronadoStoreSecret('apitronado', $candidate);
+        sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $tronadokeyboard, 'HTML');
+    }
+    step('home', $from_id);
+} elseif ($text == $textbotlang['keyboard']['ipnKeyTronado'] && $adminrulecheck['rule'] == "administrator") {
+    $state = tronadoSetting('ipnkeytronado') !== '' ? '✅' : '❌';
+    sendmessage($from_id, sprintf($textbotlang['keyboard']['askIpnKeyTronado'], $state), $backadmin, 'HTML');
+    step('ipnkeytronado', $from_id);
+} elseif ($user['step'] == "ipnkeytronado") {
+    $candidate = trim((string) $text);
+    if (!preg_match('/^\S{16,300}$/', $candidate)) {
+        sendmessage($from_id, $textbotlang['keyboard']['tronadoValueInvalid'], $tronadokeyboard, 'HTML');
+    } else {
+        tronadoStoreSecret('ipnkeytronado', $candidate);
+        sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $tronadokeyboard, 'HTML');
+    }
+    step('home', $from_id);
+} elseif ($text == $textbotlang['keyboard']['walletTronado'] && $adminrulecheck['rule'] == "administrator") {
+    $current = tronadoSetting('wallettronado');
+    sendmessage($from_id, sprintf($textbotlang['keyboard']['askWalletTronado'], $current !== '' ? $current : '-'), $backadmin, 'HTML');
+    step('wallettronado', $from_id);
+} elseif ($user['step'] == "wallettronado") {
+    $candidate = trim((string) $text);
+    if (!tronadoWalletIsValid($candidate)) {
+        sendmessage($from_id, $textbotlang['keyboard']['tronadoValueInvalid'], $tronadokeyboard, 'HTML');
+    } else {
+        update("PaySetting", "ValuePay", $candidate, "NamePay", "wallettronado");
+        sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $tronadokeyboard, 'HTML');
+    }
+    step('home', $from_id);
+} elseif ($text == $textbotlang['keyboard']['minAmountTronado'] && $adminrulecheck['rule'] == "administrator") {
+    sendmessage($from_id, $textbotlang['keyboard']['askMinAmountTronado'], $backadmin, 'HTML');
+    step("getmintronado", $from_id);
+} elseif ($user['step'] == "getmintronado") {
+    update("PaySetting", "ValuePay", intval($text), "NamePay", "minbalancetronado");
+    sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $tronadokeyboard, 'HTML');
+    step('home', $from_id);
+} elseif ($text == $textbotlang['keyboard']['maxAmountTronado'] && $adminrulecheck['rule'] == "administrator") {
+    sendmessage($from_id, $textbotlang['keyboard']['askMaxAmountTronado'], $backadmin, 'HTML');
+    step("getmaxtronado", $from_id);
+} elseif ($user['step'] == "getmaxtronado") {
+    update("PaySetting", "ValuePay", intval($text), "NamePay", "maxbalancetronado");
+    sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $tronadokeyboard, 'HTML');
+    step('home', $from_id);
+} elseif ($text == $textbotlang['keyboard']['cashbackTronado'] && $adminrulecheck['rule'] == "administrator") {
+    sendmessage($from_id, $textbotlang['keyboard']['askCashbackTronado'], $backadmin, 'HTML');
+    step("getcashtronado", $from_id);
+} elseif ($user['step'] == "getcashtronado") {
+    update("PaySetting", "ValuePay", intval($text), "NamePay", "chashbacktronado");
+    sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $tronadokeyboard, 'HTML');
+    step('home', $from_id);
+} elseif ($text == $textbotlang['keyboard']['setEducationTronado'] && $adminrulecheck['rule'] == "administrator") {
+    sendmessage($from_id, $textbotlang['Admin']['Help']['askTutorialMedia'], $backadmin, 'HTML');
+    step("gethelptronado", $from_id);
+} elseif ($user['step'] == "gethelptronado") {
+    if ($text) {
+        if (intval($text) == 2) {
+            update("PaySetting", "ValuePay", "2", "NamePay", "helptronado");
+        } else {
+            $data = json_encode(array(
+                'type' => "text",
+                'text' => $text
+            ));
+            update("PaySetting", "ValuePay", $data, "NamePay", "helptronado");
+        }
+    } elseif ($photo) {
+        $data = json_encode(array(
+            'type' => "photo",
+            'text' => $caption,
+            'photoid' => $photoid
+        ));
+        update("PaySetting", "ValuePay", $data, "NamePay", "helptronado");
+    } elseif ($video) {
+        $data = json_encode(array(
+            'type' => "video",
+            'text' => $caption,
+            'videoid' => $videoid
+        ));
+        update("PaySetting", "ValuePay", $data, "NamePay", "helptronado");
+    } else {
+        sendmessage($from_id, $textbotlang['Admin']['Help']['invalidContent'], $backadmin, 'HTML');
+        return;
+    }
+    step('home', $from_id);
+    sendmessage($from_id, $textbotlang['Admin']['Help']['tutorialSaved'], $tronadokeyboard, 'HTML');
+} elseif ($datain == "tronadosetting" && $adminrulecheck['rule'] == "administrator") {
+    sendmessage($from_id, $textbotlang['users']['selectoption'], $tronadokeyboard, 'HTML');
 } elseif ($datain == "iranpay3setting" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['users']['selectoption'], $iranpaykeyboard, 'HTML');
 }elseif ($text == "API T" && $adminrulecheck['rule'] == "administrator") {
@@ -6912,6 +7010,10 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $abangateway4text = $abangateway4 == 'oniranpay4'
         ? $textbotlang['Admin']['Status']['statuson']
         : $textbotlang['Admin']['Status']['statusoff'];
+    $tronadostatus = getPaySettingValue('statustronado', 'offtronado');
+    $tronadostatustext = $tronadostatus == 'ontronado'
+        ? $textbotlang['Admin']['Status']['statuson']
+        : $textbotlang['Admin']['Status']['statusoff'];
     $aqayepardakht = getPaySettingValue('statusaqayepardakht', 'offaqayepardakht');
     $zarinpal = getPaySettingValue('zarinpalstatus', 'offzarinpal');
     $affilnecurrency = getPaySettingValue('digistatus', 'offdigi');
@@ -6994,6 +7096,11 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
                 ['text' => $textbotlang['keyboard']['settings'], 'callback_data' => "iranpay4setting"],
                 ['text' => $abangateway4text, 'callback_data' => "editpayment-oniranpay4-$abangateway4"],
                 ['text' => $textbotlang['keyboard']['iranPay4Label'], 'callback_data' => "oniranpay4"],
+            ],
+            [
+                ['text' => $textbotlang['keyboard']['settings'], 'callback_data' => "tronadosetting"],
+                ['text' => $tronadostatustext, 'callback_data' => "editpayment-ontronado-$tronadostatus"],
+                ['text' => $textbotlang['keyboard']['tronadoLabel'], 'callback_data' => "ontronado"],
             ],
             [
                 ['text' => $textbotlang['keyboard']['settings'], 'callback_data' => "iranpay3setting"],
@@ -7111,6 +7218,9 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     } elseif ($type == "oniranpay4") {
         $valuenew = $value == "oniranpay4" ? "offiranpay4" : "oniranpay4";
         update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusiranpay4");
+    } elseif ($type == "ontronado") {
+        $valuenew = $value == "ontronado" ? "offtronado" : "ontronado";
+        update("PaySetting", "ValuePay", $valuenew, "NamePay", "statustronado");
     } elseif ($type == "oniranpay3") {
         if ($value == "oniranpay3") {
             $valuenew = "offiranpay3";
@@ -7143,6 +7253,10 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $arzireyali3 = getPaySettingValue('statusiranpay3', 'offiranpay3');
     $abangateway4 = getPaySettingValue('statusiranpay4', 'offiranpay4');
     $abangateway4text = $abangateway4 == 'oniranpay4'
+        ? $textbotlang['Admin']['Status']['statuson']
+        : $textbotlang['Admin']['Status']['statusoff'];
+    $tronadostatus = getPaySettingValue('statustronado', 'offtronado');
+    $tronadostatustext = $tronadostatus == 'ontronado'
         ? $textbotlang['Admin']['Status']['statuson']
         : $textbotlang['Admin']['Status']['statusoff'];
     $paymentstatussnotverify = getPaySettingValue('paymentstatussnotverify', 'offpaymentstatus');
@@ -7224,6 +7338,11 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
                 ['text' => $textbotlang['keyboard']['settings'], 'callback_data' => "iranpay4setting"],
                 ['text' => $abangateway4text, 'callback_data' => "editpayment-oniranpay4-$abangateway4"],
                 ['text' => $textbotlang['keyboard']['iranPay4Label'], 'callback_data' => "oniranpay4"],
+            ],
+            [
+                ['text' => $textbotlang['keyboard']['settings'], 'callback_data' => "tronadosetting"],
+                ['text' => $tronadostatustext, 'callback_data' => "editpayment-ontronado-$tronadostatus"],
+                ['text' => $textbotlang['keyboard']['tronadoLabel'], 'callback_data' => "ontronado"],
             ],
             [
                 ['text' => $textbotlang['keyboard']['settings'], 'callback_data' => "iranpay3setting"],

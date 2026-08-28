@@ -268,6 +268,18 @@ return [
                         'addedNotice5' => '💰尊敬的用户，已向您的余额添加 %s 托曼。',
                         'confirmError' => '❌ 确认过程中发生错误。请重新执行付款步骤',
                         'depositRange' => '❌ 此支付方式的最低存款金额必须为 {mainbalance}，最高为 {maxbalance} 托曼',
+                        'transactionCreatedTronado' => '✅ 您的交易已创建
+
+🛒 跟踪码：<code>%s</code>
+💲 金额：<code>%s</code> 托曼
+🪙 折合：<code>%s</code> TRX
+
+💢 付款前请注意 👇
+
+✅ 点击付款按钮，按显示金额进行卡对卡转账，并在同一页面上传收据照片。
+❌ 此交易有效期为一天。
+✅ 付款确认后，您的账户将自动充值。',
+                        'tronadoOrderClosed' => '❌ 跟踪码为 <code>%s</code> 的付款已在 Tronado 被拒绝、取消或过期。如有需要请创建新交易。',
                         'depositRangePlisio' => '❌ 此支付方式的最低存款金额必须为 {mainbalance}，最高为 {maxbalance} 托曼',
                         'cardRetrieveError' => '❌ 检索银行卡时发生内部错误。请稍后再试。',
                         'noActiveCard' => '❌ 未找到此支付方式的有效银行卡。请稍后再试或联系客服。',
@@ -3645,6 +3657,7 @@ f,n.n2',
                 'iranPay2' => '💸 第二里亚尔支付网关',
                 'iranPay3' => '💸 cubpay',
                 'iranPay4' => '💳 AbanGateway（卡对卡）',
+                'tronado' => '💳 通过 Tronado 卡对卡支付',
                 'manual' => '✅ 服务创建成功
 
 👤 服务用户名：{username}
@@ -3940,6 +3953,32 @@ f,n.n2',
                 'maxAmountIranPay4' => '⬆️ AbanGateway 最高金额',
                 'cashbackIranPay4' => '🎁 AbanGateway 返现',
                 'setEducationIranPay4' => '📚 AbanGateway 教程',
+                'tronadoLabel' => '📌 Tronado',
+                'apiTronado' => '🔑 Tronado API 密钥',
+                'ipnKeyTronado' => '🔏 Tronado IPN 签名密钥',
+                'walletTronado' => '👛 Tronado TRX 钱包',
+                'minAmountTronado' => '⬇️ Tronado 最低金额',
+                'maxAmountTronado' => '⬆️ Tronado 最高金额',
+                'cashbackTronado' => '🎁 Tronado 返现',
+                'setEducationTronado' => '📚 Tronado 教程',
+                'askMinAmountTronado' => '⬇️ 请发送通过 Tronado 支付的最低金额（托曼，仅数字）。',
+                'askMaxAmountTronado' => '⬆️ 请发送通过 Tronado 支付的最高金额（托曼，仅数字）。',
+                'askCashbackTronado' => '🎁 请发送 Tronado 支付的返现百分比（0 为关闭）。',
+                'askApiTronado' => '🔑 请发送您的 Tronado API 密钥。
+
+请向 Tronado 客服（@trndsupport）获取 API 密钥和 IPN 签名密钥，并将以下回调地址告知客服以注册域名：
+<code>%s</code>
+
+当前状态：%s',
+                'askIpnKeyTronado' => '🔏 请发送您的 Tronado IPN 签名密钥。
+
+它用于验证每个 Tronado 回调的签名，由 @trndsupport 发放。
+
+当前状态：%s',
+                'askWalletTronado' => '👛 请发送您的 TRON（TRC20）钱包地址。每笔付款的 TRX 都会转入此钱包。
+
+当前钱包：%s',
+                'tronadoValueInvalid' => '❌ 该值无效，未保存。',
                 'lastHourStats' => '⏱️ 过去一小时',
                 'lastMonth' => '⛅️ 上月',
                 'locationChangeLimit' => '🌍 位置更改限制',
@@ -4728,6 +4767,17 @@ f,n.n2',
 - 🆔用户数字 ID：%s
 - 💸 交易金额 %s
 - 💳 支付方式：cubpay',
+                'reportTronadoGateway' => '💵 新付款
+- 👤 用户名 : @%s
+- 🆔 用户 ID : %s
+- 💸 金额 : %s 托曼
+- 🪙 收到 TRX : %s
+- 🔗 哈希/参考 : %s
+- 💳 方式 : Tronado',
+                'tronadoDeliveryFailed' => '⭕️ Tronado 付款 %s 已确认，但服务/充值交付失败。请手动检查。
+错误：%s',
+                'tronadoProblem' => '⭕️ Tronado 付款 %s（用户 %s）未入账：%s
+请手动检查。',
                 'reportNowpayment' => '💵 新付款
 - 👤 用户用户名：@%s
 - 🆔用户数字 ID：%s

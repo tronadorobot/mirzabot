@@ -268,6 +268,18 @@ Current language: <b>{lang}</b>',
                         'addedNotice5' => '💰Dear user, an amount of %s Toman was added to your balance.',
                         'confirmError' => '❌ An error occurred during confirmation. Please perform the payment steps again',
                         'depositRange' => '❌ The minimum deposit amount for this payment method must be {mainbalance} and the maximum {maxbalance} Toman',
+                        'transactionCreatedTronado' => '✅ Your transaction was created
+
+🛒 Tracking code: <code>%s</code>
+💲 Amount: <code>%s</code> Toman
+🪙 Equivalent: <code>%s</code> TRX
+
+💢 Please note before paying 👇
+
+✅ Tap the payment button, transfer the shown amount card-to-card and upload the receipt photo on the same page.
+❌ This transaction is valid for one day.
+✅ Once the payment is approved, your account is credited automatically.',
+                        'tronadoOrderClosed' => '❌ The payment with tracking code <code>%s</code> was rejected, cancelled or expired at Tronado. Create a new transaction if needed.',
                         'depositRangePlisio' => '❌ The minimum deposit amount for this payment method must be {mainbalance} and the maximum {maxbalance} Toman',
                         'cardRetrieveError' => '❌ An internal error occurred while retrieving the bank card. Please try again later.',
                         'noActiveCard' => '❌ No active bank card was found for this payment method. Please try again later or contact support.',
@@ -3645,6 +3657,7 @@ After joining, click the check membership button',
                 'iranPay2' => '💸 Second Rial payment gateway',
                 'iranPay3' => '💸 cubpay',
                 'iranPay4' => '💳 AbanGateway (card to card)',
+                'tronado' => '💳 Card-to-card payment via Tronado',
                 'manual' => '✅ Service was created successfully
 
 👤 Service username : {username}
@@ -3940,6 +3953,32 @@ We hope you had a good experience with the ease and speed of your service. If yo
                 'maxAmountIranPay4' => '⬆️ AbanGateway maximum',
                 'cashbackIranPay4' => '🎁 AbanGateway cashback',
                 'setEducationIranPay4' => '📚 AbanGateway guide',
+                'tronadoLabel' => '📌 Tronado',
+                'apiTronado' => '🔑 Tronado API key',
+                'ipnKeyTronado' => '🔏 Tronado IPN signing key',
+                'walletTronado' => '👛 Tronado TRX wallet',
+                'minAmountTronado' => '⬇️ Tronado minimum',
+                'maxAmountTronado' => '⬆️ Tronado maximum',
+                'cashbackTronado' => '🎁 Tronado cashback',
+                'setEducationTronado' => '📚 Tronado guide',
+                'askMinAmountTronado' => '⬇️ Send the minimum amount payable via Tronado, in Toman (digits only).',
+                'askMaxAmountTronado' => '⬆️ Send the maximum amount payable via Tronado, in Toman (digits only).',
+                'askCashbackTronado' => '🎁 Send the cashback percentage for Tronado payments (0 to disable).',
+                'askApiTronado' => '🔑 Send your Tronado API key.
+
+Get the API key and the IPN signing key from Tronado support (@trndsupport), and give them this callback address so your domain gets registered:
+<code>%s</code>
+
+Current state: %s',
+                'askIpnKeyTronado' => '🔏 Send your Tronado IPN signing key.
+
+It verifies the signature of every Tronado callback and is issued by @trndsupport.
+
+Current state: %s',
+                'askWalletTronado' => '👛 Send your TRON (TRC20) wallet address. The TRX of every payment is delivered to this wallet.
+
+Current wallet: %s',
+                'tronadoValueInvalid' => '❌ The value was not valid and was not saved.',
                 'lastHourStats' => '⏱️ Last hour',
                 'lastMonth' => '⛅️ Previous month',
                 'locationChangeLimit' => '🌍 Location change limit',
@@ -4728,6 +4767,17 @@ Payment tracking code : %s',
 - 🆔User numeric ID : %s
 - 💸 Transaction amount %s
 - 💳 Payment method : cubpay',
+                'reportTronadoGateway' => '💵 New payment
+- 👤 Username : @%s
+- 🆔 User id : %s
+- 💸 Amount : %s Toman
+- 🪙 TRX received : %s
+- 🔗 Hash/reference : %s
+- 💳 Method : Tronado',
+                'tronadoDeliveryFailed' => '⭕️ Tronado payment %s was approved but delivering the service/credit failed. Please check it manually.
+Error: %s',
+                'tronadoProblem' => '⭕️ Tronado payment %s (user %s) was NOT credited: %s
+Please check it manually.',
                 'reportNowpayment' => '💵 New payment
 - 👤 User username : @%s
 - 🆔User numeric ID : %s

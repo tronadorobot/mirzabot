@@ -5169,6 +5169,90 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         $message_id = sendmessage($from_id, $textiranpay4, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
         step('home', $from_id);
+    } elseif ($datain == "tronado") {
+        if (!tronadoConfigured()) {
+            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
+            return;
+        }
+        $mainbalance = intval(getPaySettingValue('minbalancetronado', '0'));
+        $maxbalance = intval(getPaySettingValue('maxbalancetronado', '0'));
+        if ($user['Processing_value'] < $mainbalance || $user['Processing_value'] > $maxbalance) {
+            $mainbalance = number_format($mainbalance);
+            $maxbalance = number_format($maxbalance);
+            sendmessage($from_id, strtr($textbotlang['users']['Balance']['depositRangePlisio'], ['{mainbalance}' => $mainbalance, '{maxbalance}' => $maxbalance]), null, 'HTML');
+            return;
+        }
+
+        deletemessage($from_id, $message_id);
+        sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
+        $dateacc = date('Y/m/d H:i:s');
+        $randomString = bin2hex(random_bytes(5));
+        $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
+        $Payment_Method = "Tronado";
+
+        // Row first, link second: a callback can only ever find an order that
+        // exists, and the order id doubles as Tronado's PaymentID.
+        $stmt = $pdo->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice) VALUES (?,?,?,?,?,?,?)");
+        $stmt->execute([$from_id, $randomString, $dateacc, $user['Processing_value'], "Unpaid", $Payment_Method, $invoice]);
+
+        $pay = createPayTronado($user['Processing_value'], $randomString);
+        if (empty($pay['success']) || empty($pay['payment_link'])) {
+            // No link was ever handed out, so nothing can pay this row: close it
+            // now instead of letting the poll cron ask Tronado about it.
+            $stmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'expire' WHERE id_order = ?");
+            $stmt->execute([$randomString]);
+            clearSelectCache('Payment_report');
+            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
+            step('home', $from_id);
+            $text_error = htmlspecialchars(json_encode($pay, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+            $ErrorsLinkPayment = sprintf($textbotlang['Admin']['reportgroup']['errorPaymentLink3'], $text_error, $from_id, $Payment_Method, $username);
+            if (strlen($setting['Channel_Report']) > 0) {
+                telegram('sendmessage', [
+                    'chat_id' => $setting['Channel_Report'],
+                    'message_thread_id' => $errorreport,
+                    'text' => $ErrorsLinkPayment,
+                    'parse_mode' => "HTML"
+                ]);
+            }
+            return;
+        }
+
+        // What the IPN and the poll cron will check the payment against.
+        tronadoStoreMeta($randomString, tronadoSealMeta([
+            'token' => $pay['token'],
+            'trx' => $pay['trx'],
+            'trx_price' => $pay['trx_price'],
+            'wallet' => $pay['wallet'],
+            'estimated_toman' => $pay['estimated_toman'],
+            'created_utc' => gmdate('c'),
+        ]));
+
+        $paymentkeyboard = json_encode([
+            'inline_keyboard' => [
+                [
+                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $pay['payment_link']]
+                ]
+            ]
+        ]);
+        $pricetoman = number_format($user['Processing_value'], 0);
+        $trxtext = rtrim(rtrim(number_format($pay['trx'], 6, '.', ''), '0'), '.');
+        $texttronado = sprintf($textbotlang['users']['Balance']['transactionCreatedTronado'], $randomString, $pricetoman, $trxtext);
+        $gethelp = getPaySettingValue('helptronado', '2');
+        if ($gethelp != 2) {
+            $data = json_decode($gethelp, true);
+            if (is_array($data)) {
+                if ($data['type'] == "text") {
+                    sendmessage($from_id, $data['text'], null, 'HTML');
+                } elseif ($data['type'] == "photo") {
+                    sendphoto($from_id, $data['photoid'], $data['text'] ?? null);
+                } elseif ($data['type'] == "video") {
+                    sendvideo($from_id, $data['videoid'], $data['text'] ?? null);
+                }
+            }
+        }
+        $message_id = sendmessage($from_id, $texttronado, $paymentkeyboard, 'HTML');
+        updatePaymentMessageId($message_id, $randomString);
+        step('home', $from_id);
     } elseif ($datain == "iranpay3") {
         $dateacc = date('Y/m/d');
         $query = "SELECT SUM(price) as price FROM Payment_report WHERE  Payment_Method = 'Currency Rial 1' AND  time LIKE '%$dateacc%'";
