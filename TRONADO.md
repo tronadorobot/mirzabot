@@ -12,10 +12,13 @@
 
 1. یک حساب کسب‌وکار در ترونادو (@trndsupport) و از آن‌ها دو مقدار بگیرید:
    **کلید API** و **کلید امضای IPN**.
-2. دامنه ربات خود را به پشتیبانی ترونادو بدهید تا آدرس کال‌بک
-   `https://دامنه-شما/payment/tronado.php` را در لیست مجاز ثبت کنند.
-   (بدون این مرحله، ساخت سفارش در ترونادو رد می‌شود.)
-3. یک آدرس ولت ترون (TRC20، با `T` شروع می‌شود، ۳۴ کاراکتر).
+2. یک آدرس ولت ترون (TRC20، با `T` شروع می‌شود، ۳۴ کاراکتر). بهتر است ولتی
+   باشد که قبلاً فعال شده (تراکنش داشته)؛ ولت فعال‌نشده باعث می‌شود اولین
+   خریدار حدود ۱٫۲ ترون بابت فعال‌سازی ولت اضافه بپردازد.
+3. (توصیه‌شده) دامنه ربات خود را به پشتیبانی ترونادو بدهید تا آدرس کال‌بک
+   `https://دامنه-شما/payment/tronado.php` را در لیست مجاز ثبت کنند. برای یک
+   حساب کاملاً جدید الزامی نیست (پیش‌فرض باز است)، ولی برای امنیت (جلوگیری از
+   سوءاستفاده در صورت لو رفتن کلید API) توصیه می‌شود.
 
 ## نصب
 
@@ -86,10 +89,13 @@ Toman price, like every other gateway.
 
 1. A Tronado business account (@trndsupport) and, from them, an **API key** and
    an **IPN signing key**.
-2. Give Tronado support your bot's domain so they whitelist the callback URL
-   `https://your-domain/payment/tronado.php` (order creation is refused
-   otherwise).
-3. A TRON wallet address (TRC20, starts with `T`, 34 characters).
+2. A TRON wallet address (TRC20, starts with `T`, 34 characters). Prefer one
+   that is already activated (has had a transaction); an unactivated wallet
+   makes the first buyer pay ~1.2 TRX extra for on-chain activation.
+3. (Recommended) Give Tronado support your bot's domain so they whitelist the
+   callback URL `https://your-domain/payment/tronado.php`. Not strictly
+   required for a brand-new account (it is open by default), but recommended
+   for security — it stops a leaked API key from redirecting your IPNs.
 
 ## Install
 
