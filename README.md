@@ -86,7 +86,7 @@ Mirza Bot integrates with the most popular VPN and network management panels:
 | 🪙 **NowPayments** | Crypto |
 | 🪙 **Plisio** | Crypto |
 | 🪙 **cubpay** | TRON / crypto |
-| 🪙 **Tronado** | Card-to-card, settled in TRON (TRX) |
+| 🪙 **Tronado** | Card-to-card, settled in TRON (TRX) — setup: [TRONADO.md](TRONADO.md) |
 | 🇮🇷 **Zarinpal** | Online gateway |
 | 🇮🇷 **Aqayepardakht** | Online gateway |
 | 🇮🇷 **IranPay** | Online gateway |
