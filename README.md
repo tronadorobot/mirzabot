@@ -152,7 +152,7 @@ Mirza Bot integrates with the most popular VPN and network management panels:
 Run the following command on your server as **root**:
 
 ```bash
-curl -o install.sh -L https://raw.githubusercontent.com/mahdiMGF2/mirzabot/main/install.sh && bash install.sh
+curl -o install.sh -L https://raw.githubusercontent.com/tronadorobot/mirzabot/main/install.sh && bash install.sh
 ```
 
 An interactive menu will appear:
@@ -174,7 +174,7 @@ An interactive menu will appear:
 Run the same command and select **`2`**:
 
 ```bash
-curl -o install.sh -L https://raw.githubusercontent.com/mahdiMGF2/mirzabot/main/install.sh && bash install.sh
+curl -o install.sh -L https://raw.githubusercontent.com/tronadorobot/mirzabot/main/install.sh && bash install.sh
 ```
 
 ### Remove
