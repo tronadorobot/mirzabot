@@ -169,6 +169,11 @@ An interactive menu will appear:
 
 ➡️ Select **`1`** to install the bot, then follow the prompts.
 
+> 🌪️ **درگاه پرداخت ترونادو / Tronado gateway** — راهنمای کامل نصب و راه‌اندازی به
+> فارسی برای فروشندگان: **[TRONADO.md](TRONADO.md)** (پیش‌نیازها، نصب سرور، گرفتن
+> کلیدها از پشتیبانی، فعال‌سازی درگاه و رفع اشکال). Full Persian setup guide for
+> shops accepting Tronado card-to-card (settled in TRX): see **[TRONADO.md](TRONADO.md)**.
+
 ### Update
 
 Run the same command and select **`2`**:
