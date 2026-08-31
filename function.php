@@ -1293,7 +1293,7 @@ function outputlink($text)
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $text);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT_MS, 10000);
+    curl_setopt($ch, CURLOPT_TIMEOUT_MS, ($GLOBALS['request_exec_timeout'] ?? null) ?: 10000);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -1301,7 +1301,6 @@ function outputlink($text)
     curl_setopt($ch, CURLOPT_USERAGENT, $userAgent);
     $response = curl_exec($ch);
     if ($response === false) {
-        $error = curl_error($ch);
         return null;
     } else {
         return $response;
@@ -1374,12 +1373,21 @@ function DirectPayment($order_id, $image = 'images.jpg')
             'username' => $Balance_id['username'],
             'type' => 'buy'
         );
+        $invoiceStatusBefore = $get_invoice['Status'] ?? null;
+        $invoiceClaimed = false;
+        if (!empty($get_invoice['id_invoice'])) {
+            $claimInvoice = $pdo->prepare("UPDATE invoice SET Status = 'active' WHERE id_invoice = ? AND Status <> 'active'");
+            $claimInvoice->execute([$get_invoice['id_invoice']]);
+            clearSelectCache('invoice');
+            if ($claimInvoice->rowCount() === 0) {
+                return;
+            }
+            $invoiceClaimed = true;
+        }
         $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $info_product['code_product'], $username_ac, $datac);
         if (!is_array($dataoutput) || empty($dataoutput['username'])) {
-            clearSelectCache('invoice');
-            $invoice_now = select("invoice", "*", "id_invoice", $get_invoice['id_invoice'], "select");
-            if ($invoice_now && $invoice_now['Status'] == "active") {
-                return;
+            if ($invoiceClaimed) {
+                update("invoice", "Status", $invoiceStatusBefore, "id_invoice", $get_invoice['id_invoice']);
             }
             $dataoutput['msg'] = json_encode($dataoutput['msg'] ?? $dataoutput ?? 'unknown error');
             $balance = $Balance_id['Balance'] + $Payment_report['price'];
@@ -1689,10 +1697,6 @@ function DirectPayment($order_id, $image = 'images.jpg')
         $nameloc = select("invoice", "*", "username", $steppay[0], "select");
         $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
         $Balance_Low_user = 0;
-        $inboundid = $marzban_list_get['inboundid'];
-        if ($nameloc['inboundid'] != null) {
-            $inboundid = $nameloc['inboundid'];
-        }
         update("user", "Balance", $Balance_Low_user, "id", $Balance_id['id']);
         $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $steppay[0]);
         $data_for_database = json_encode(array(
@@ -1765,10 +1769,6 @@ function DirectPayment($order_id, $image = 'images.jpg')
         $nameloc = select("invoice", "*", "username", $steppay[0], "select");
         $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
         $Balance_Low_user = 0;
-        $inboundid = $marzban_list_get['inboundid'];
-        if ($nameloc['inboundid'] != false) {
-            $inboundid = $nameloc['inboundid'];
-        }
         update("user", "Balance", $Balance_Low_user, "id", $nameloc['id_user']);
         $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $steppay[0]);
         $data_for_database = json_encode(array(
@@ -1778,8 +1778,6 @@ function DirectPayment($order_id, $image = 'images.jpg')
         ));
         $dateacc = date('Y/m/d H:i:s');
         $type = "extra_time_user";
-        $timeservice = $DataUserOut['expire'] - time();
-        $day = floor($timeservice / 86400);
         $extra_time = $ManagePanel->extra_time($nameloc['username'], $marzban_list_get['code_panel'], $tmieextra);
         if ($extra_time['status'] == false) {
             $extra_time['msg'] = json_encode($extra_time['msg']);
@@ -2154,7 +2152,6 @@ function activecron()
 }
 function createInvoice($amount)
 {
-    global $from_id, $domainhosts;
     $PaySetting = select("PaySetting", "*", "NamePay", "apiiranpay", "select")['ValuePay'];
     $walletaddress = select("PaySetting", "*", "NamePay", "walletaddress", "select")['ValuePay'];
 
@@ -2180,9 +2177,7 @@ function createInvoice($amount)
 }
 function verifpay($id)
 {
-    global $from_id, $domainhosts;
     $PaySetting = select("PaySetting", "*", "NamePay", "apiiranpay", "select")['ValuePay'];
-    $walletaddress = select("PaySetting", "*", "NamePay", "walletaddress", "select")['ValuePay'];
     $curl = curl_init();
 
     curl_setopt_array($curl, array(
@@ -2256,6 +2251,80 @@ function sanitizeUserName($userName)
     }
 
     return $userName;
+}
+function panelErrorText($rawError)
+{
+    global $textbotlang, $request_exec_timeout;
+    if (is_array($rawError) || is_object($rawError)) {
+        $raw = json_encode($rawError, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    } else {
+        $raw = trim((string) $rawError);
+    }
+    if ($raw === '') {
+        $raw = 'unknown error';
+    }
+    error_log('Panel connection error: ' . $raw);
+    $messages = $textbotlang['Admin']['managepanel']['panelConnection'] ?? [];
+    if (empty($messages)) {
+        return $raw;
+    }
+    $needle = strtolower($raw);
+    if (str_contains($needle, 'timed out') || str_contains($needle, 'timeout') || str_contains($needle, 'operation too slow')) {
+        $seconds = 0;
+        if (preg_match('/after (\d+) milliseconds/', $needle, $matched)) {
+            $seconds = (int) round(intval($matched[1]) / 1000);
+        }
+        if ($seconds < 1) {
+            $seconds = (int) round(intval($request_exec_timeout ?: 10000) / 1000);
+        }
+        $text = sprintf($messages['timeout'], $seconds);
+    } elseif (str_contains($needle, 'could not resolve') || str_contains($needle, 'name or service not known') || str_contains($needle, 'name lookup')) {
+        $text = $messages['dns'];
+    } elseif (str_contains($needle, 'connection refused') || str_contains($needle, 'failed to connect') || str_contains($needle, "couldn't connect") || str_contains($needle, 'connection reset')) {
+        $text = $messages['refused'];
+    } elseif (str_contains($needle, 'ssl') || str_contains($needle, 'certificate')) {
+        $text = $messages['ssl'];
+    } else {
+        $text = $messages['generic'];
+    }
+    if (!empty($messages['detail'])) {
+        $text .= sprintf($messages['detail'], htmlspecialchars($raw, ENT_NOQUOTES, 'UTF-8'));
+    }
+    return $text;
+}
+function panelProtocolsConfigured($rawProxies)
+{
+    $decoded = json_decode((string) $rawProxies, true);
+    return is_array($decoded) && count($decoded) > 0;
+}
+
+function panelProtocolsMissingError($panelName = '')
+{
+    global $textbotlang;
+    $panelName = (string) $panelName;
+    $message = $textbotlang['Admin']['managepanel']['protocolsNotConfigured'] ?? null;
+    if ($message === null) {
+        $message = 'Protocols and inbounds are not configured for this location. Open panel management and run the protocol/inbound setup before selling.';
+    }
+    error_log('Panel protocols not configured' . ($panelName !== '' ? " [$panelName]" : ''));
+    return array('error' => $message);
+}
+function absoluteSubscriptionUrl($subUrl, $panelUrl)
+{
+    $subUrl = trim((string) $subUrl);
+    if ($subUrl === '') {
+        return '';
+    }
+    if (preg_match('#^[a-zA-Z][a-zA-Z0-9+.\-]*://#', $subUrl)) {
+        return $subUrl;
+    }
+    if ($subUrl[0] !== '/') {
+        $firstSegment = explode('/', $subUrl)[0];
+        if (preg_match('/[.:]/', $firstSegment)) {
+            return $subUrl;
+        }
+    }
+    return rtrim((string) $panelUrl, '/') . '/' . ltrim($subUrl, '/');
 }
 function normalizePanelUrl($url)
 {
@@ -2652,11 +2721,59 @@ function mirzaRemoveInstallerPath($path)
     return @rmdir($path) && $removed;
 }
 
+function mirzaInstallerNoticeTexts()
+{
+    global $textbotlang;
+    $lang = is_array($textbotlang) && !empty($textbotlang) ? $textbotlang : null;
+    if ($lang === null) {
+        $lang = @include __DIR__ . '/lang/fa.php';
+    }
+    $notice = is_array($lang) ? ($lang['Admin']['installerNotice'] ?? null) : null;
+    return [
+        'user' => $notice['user'] ?? 'The bot is temporarily unavailable. Please try again later.',
+        'admin' => $notice['admin'] ?? 'The install folder still exists on the server and the bot could not remove it. Delete it manually to bring the bot back.',
+    ];
+}
+
+function mirzaShouldAlertInstallerAdmin($cooldown = 3600)
+{
+    $cacheDir = __DIR__ . '/storage/cache';
+    if (!is_dir($cacheDir) && !@mkdir($cacheDir, 0775, true) && !is_dir($cacheDir)) {
+        return true;
+    }
+    $marker = $cacheDir . '/installer_notice';
+    $last = @file_get_contents($marker);
+    if ($last !== false && (time() - intval($last)) < $cooldown) {
+        return false;
+    }
+    @file_put_contents($marker, (string) time());
+    return true;
+}
+
+function mirzaNotifyInstallerBlocked()
+{
+    global $from_id, $adminnumber;
+    if (!function_exists('sendmessage')) {
+        return;
+    }
+    $texts = mirzaInstallerNoticeTexts();
+    $adminId = isset($adminnumber) ? trim((string) $adminnumber) : '';
+    $userId = isset($from_id) ? trim((string) $from_id) : '';
+    $userIsAdmin = $adminId !== '' && $userId === $adminId;
+    if ($userId !== '' && !isTelegramChatIdEmpty($userId)) {
+        sendmessage($userId, $userIsAdmin ? $texts['admin'] : $texts['user'], null, 'HTML');
+    }
+    if (!$userIsAdmin && $adminId !== '' && mirzaShouldAlertInstallerAdmin()) {
+        sendmessage($adminId, $texts['admin'], null, 'HTML');
+    }
+}
+
 function mirzaStopForInstaller($message)
 {
     error_log($message);
+    mirzaNotifyInstallerBlocked();
     if (!headers_sent()) {
-        http_response_code(503);
+        http_response_code(200);
         header('Content-Type: text/plain; charset=utf-8');
         header('Cache-Control: no-store');
     }

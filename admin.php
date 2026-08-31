@@ -1253,28 +1253,10 @@ elseif ($datain == "systemsms") {
             $userslist = json_encode($stmt->fetchAll());
         } else {
             if ($typeusermessage == "all") {
-                if ($typeusermessage == "all") {
-                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.last_message_time < :time");
-                    $stmt->bindParam(':time', $timenouser, PDO::PARAM_STR);
-                    $stmt->execute();
-                    $userslist = json_encode($stmt->fetchAll());
-                } elseif ($typeusermessage == "customer") {
-                    if ($userdata['selectpanel'] == "all") {
-                        $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.last_message_time < :time AND EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id);");
-                    } else {
-                        $panel = select("marzban_panel", "*", "code_panel", $userdata['selectpanel'], "select");
-                        $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.last_message_time < :time AND EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id AND i.Service_location = :location);");
-                        $stmt->bindParam(':location', $panel['name_panel'], PDO::PARAM_STR);
-                    }
-                    $stmt->bindParam(':time', $timenouser, PDO::PARAM_STR);
-                    $stmt->execute();
-                    $userslist = json_encode($stmt->fetchAll());
-                } elseif ($typeusermessage == "nonecustomer") {
-                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.last_message_time < :time AND NOT EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id);");
-                    $stmt->bindParam(':time', $timenouser, PDO::PARAM_STR);
-                    $stmt->execute();
-                    $userslist = json_encode($stmt->fetchAll());
-                }
+                $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.last_message_time < :time");
+                $stmt->bindParam(':time', $timenouser, PDO::PARAM_STR);
+                $stmt->execute();
+                $userslist = json_encode($stmt->fetchAll());
             } elseif ($typeusermessage == "customer") {
                 if ($userdata['selectpanel'] == "all") {
                     $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.agent =  :agent AND u.last_message_time < :time AND EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id);");
@@ -1965,13 +1947,6 @@ elseif ($datain == "systemsms") {
             $valuenew = "onaffiliates";
         }
         update("setting", "affiliatesstatus", $valuenew);
-    } elseif ($type == "verifybyuser") {
-        if ($value == "onverify") {
-            $valuenew = "offverify";
-        } else {
-            $valuenew = "onverify";
-        }
-        update("setting", "verifybucodeuser", $valuenew);
     } elseif ($type == "btn_status_category") {
         if ($value == "1") {
             $valuenew = "0";
@@ -3547,7 +3522,7 @@ elseif ($datain == "systemsms") {
             $text_marzban = $textbotlang['Admin']['managepanel']['invalidCredentials'];
             sendmessage($from_id, $text_marzban, $optionMarzban, 'HTML');
         } else {
-            $text_marzban = $textbotlang['Admin']['managepanel']['errorStatusPanel'] . json_encode($Check_token);
+            $text_marzban = (!empty($Check_token['error']) || !empty($Check_token['errror'])) ? panelErrorText($Check_token['error'] ?? $Check_token['errror']) : $textbotlang['Admin']['managepanel']['errorStatusPanel'] . json_encode($Check_token);
             sendmessage($from_id, $text_marzban, $optionMarzban, 'HTML');
         }
     } elseif ($marzban_list_get['type'] == "x-ui_single") {
@@ -3555,7 +3530,7 @@ elseif ($datain == "systemsms") {
         if (isset($status_server['status']) && $status_server['status'] != 200) {
             sendmessage($from_id, $textbotlang['Admin']['managepanel']['xuiErrorCode'] . $status_server['status'], $optionX_ui_single, 'HTML');
         } elseif (isset($status_server['error']) && $status_server['error'] != 200) {
-            sendmessage($from_id, $textbotlang['Admin']['managepanel']['xuiErrorReason'] . $status_server['error'], $optionX_ui_single, 'HTML');
+            sendmessage($from_id, panelErrorText($status_server['error']), $optionX_ui_single, 'HTML');
         } else {
             $status_server = json_decode($status_server['body'], true);
             function percent($current, $total)
@@ -3607,7 +3582,7 @@ elseif ($datain == "systemsms") {
             $text_marzban = $textbotlang['Admin']['managepanel']['invalidCredentials'];
             sendmessage($from_id, $text_marzban, $optionalireza_single, 'HTML');
         } else {
-            $text_marzban = $textbotlang['Admin']['managepanel']['errorStatusPanel'] . sprintf($textbotlang['Admin']['errorReason2'], $x_ui_check_connect['errror']);
+            $text_marzban = panelErrorText($x_ui_check_connect['errror']);
             sendmessage($from_id, $text_marzban, $optionalireza_single, 'HTML');
         }
     } elseif ($marzban_list_get['type'] == "hiddify") {
@@ -3616,7 +3591,7 @@ elseif ($datain == "systemsms") {
             $text_marzban = $textbotlang['Admin']['managepanel']['fetchErrorCode'] . $System_Stats['status'];
             sendmessage($from_id, $text_marzban, $optionhiddfy, 'HTML');
         } elseif (!empty($System_Stats['error'])) {
-            $text_marzban = $textbotlang['Admin']['managepanel']['fetchError'] . $System_Stats['error'];
+            $text_marzban = panelErrorText($System_Stats['error']);
             sendmessage($from_id, $text_marzban, $optionhiddfy, 'HTML');
         } else {
             $System_Stats = json_decode($System_Stats['body'], true);
@@ -3644,7 +3619,7 @@ elseif ($datain == "systemsms") {
                 sendmessage($from_id, $text_marzban, $optionMarzban, 'HTML');
                 return;
             } elseif (!empty($System_Stats['error'])) {
-                $text_marzban = $textbotlang['Admin']['managepanel']['fetchError'] . $System_Stats['error'];
+                $text_marzban = panelErrorText($System_Stats['error']);
                 sendmessage($from_id, $text_marzban, $optionMarzban, 'HTML');
                 return;
             }
@@ -3668,7 +3643,7 @@ elseif ($datain == "systemsms") {
             $text_marzban = $textbotlang['Admin']['managepanel']['invalidCredentials'];
             sendmessage($from_id, $text_marzban, $optionMarzban, 'HTML');
         } else {
-            $text_marzban = $textbotlang['Admin']['managepanel']['errorStatusPanel'] . json_encode($Check_token);
+            $text_marzban = (!empty($Check_token['error']) || !empty($Check_token['errror'])) ? panelErrorText($Check_token['error'] ?? $Check_token['errror']) : $textbotlang['Admin']['managepanel']['errorStatusPanel'] . json_encode($Check_token);
             sendmessage($from_id, $text_marzban, $optionMarzban, 'HTML');
         }
     } elseif ($marzban_list_get['type'] == "WGDashboard") {
@@ -3685,7 +3660,7 @@ elseif ($datain == "systemsms") {
     } elseif ($marzban_list_get['type'] == "mikrotik") {
         $result = login_mikrotik($marzban_list_get['url_panel'], $marzban_list_get['username_panel'], $marzban_list_get['password_panel']);
         if (isset($result['error'])) {
-            sendmessage($from_id, json_encode($result), $option_mikrotik, 'HTML');
+            sendmessage($from_id, panelErrorText($result), $option_mikrotik, 'HTML');
         } else {
             $free_hdd_space = round($result['free-hdd-space'] / pow(1024, 3), 2);
             $free_memory = round($result['free-memory'] / pow(1024, 3), 2);
@@ -3712,7 +3687,7 @@ elseif ($datain == "systemsms") {
             $text_marzban = $textbotlang['Admin']['managepanel']['invalidToken'];
             sendmessage($from_id, $text_marzban, $optionrebecca, 'HTML');
         } else {
-            $text_marzban = $textbotlang['Admin']['managepanel']['errorStatusPanel'] . json_encode($Check_connection);
+            $text_marzban = !empty($Check_connection['error']) ? panelErrorText($Check_connection['error']) : $textbotlang['Admin']['managepanel']['errorStatusPanel'] . json_encode($Check_connection);
             sendmessage($from_id, $text_marzban, $optionrebecca, 'HTML');
         }
     } else {
@@ -6819,7 +6794,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     }
     $nodes = Get_Nodes($user['Processing_value']);
     if (!empty($nodes['error'])) {
-        sendmessage($from_id, $nodes['error'], null, 'HTML');
+        sendmessage($from_id, panelErrorText($nodes['error']), null, 'HTML');
         return;
     }
     if (!empty($nodes['status']) && $nodes['status'] != 200) {
@@ -6854,7 +6829,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     update("user", "Processing_value_one", $nodeid, "id", $from_id);
     $node = Get_Node($user['Processing_value'], $nodeid);
     if (!empty($node['error'])) {
-        sendmessage($from_id, $node['error'], null, 'HTML');
+        sendmessage($from_id, panelErrorText($node['error']), null, 'HTML');
         return;
     }
     if (!empty($node['status']) && $node['status'] != 200) {
@@ -6863,7 +6838,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     }
     $nodeusage = Get_usage_Nodes($user['Processing_value']);
     if (!empty($nodeusage['error'])) {
-        sendmessage($from_id, $nodeusage['error'], null, 'HTML');
+        sendmessage($from_id, panelErrorText($nodeusage['error']), null, 'HTML');
         return;
     }
     if (!empty($nodeusage['status']) && $nodeusage['status'] != 200) {
@@ -8667,7 +8642,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         if ($panel['version_panel'] == "1") {
             $DataUserOut = getuser($text, $user['Processing_value']);
             if (!empty($DataUserOut['error'])) {
-                sendmessage($from_id, $DataUserOut['error'], null, 'HTML');
+                sendmessage($from_id, panelErrorText($DataUserOut['error']), null, 'HTML');
                 return;
             }
             if (!empty($DataUserOut['status']) && $DataUserOut['status'] != 200) {
@@ -8700,7 +8675,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         } else {
             $DataUserOut = getuser($text, $user['Processing_value']);
             if (!empty($DataUserOut['error'])) {
-                sendmessage($from_id, $DataUserOut['error'], null, 'HTML');
+                sendmessage($from_id, panelErrorText($DataUserOut['error']), null, 'HTML');
                 return;
             }
             if (!empty($DataUserOut['status']) && $DataUserOut['status'] != 200) {
@@ -8749,7 +8724,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     } elseif ($panel['type'] == "x-ui_single") {
         $data = get_clinets($text, $panel);
         if (!empty($data['error'])) {
-            sendmessage($from_id, $data['error'], null, 'HTML');
+            sendmessage($from_id, panelErrorText($data['error']), null, 'HTML');
             return;
         }
         if (!empty($data['status']) && $data['status'] != 200) {
@@ -9023,7 +8998,7 @@ elseif ($text == $textbotlang['keyboard']['hidePanelForUser'] && $adminrulecheck
     if ($marzban_list_get['type'] == "marzban") {
         $DataUserOut = getuser($text, $marzban_list_get['name_panel']);
         if (!empty($DataUserOut['error'])) {
-            sendmessage($from_id, $DataUserOut['error'], null, 'HTML');
+            sendmessage($from_id, panelErrorText($DataUserOut['error']), null, 'HTML');
             return;
         }
         if (!empty($DataUserOut['status']) && $DataUserOut['status'] != 200) {
@@ -11026,7 +11001,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     }
     $list_panel = get_panel_list($panel);
     if (!empty($data['error'])) {
-        sendmessage($from_id, $data['error'], null, 'HTML');
+        sendmessage($from_id, panelErrorText($data['error']), null, 'HTML');
         return;
     }
     if (!empty($data['status']) && $data['status'] != 200) {
