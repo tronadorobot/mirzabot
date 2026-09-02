@@ -5582,6 +5582,16 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     update("user", "Processing_value", $dataget[1], "id", $from_id);
 } elseif (preg_match('/^sendresidarze-(.*)/', $datain, $dataget) and $text_inline != null) {
     $payemntcheck = select("Payment_report", "*", "id_order", $dataget[1], "select");
+    // Callback data is whatever the client sent, not whatever button we drew, so
+    // the order has to be checked against the sender and against the one method
+    // this receipt flow serves (the button is only ever drawn for it, above).
+    // Without this any buyer could aim the flow at somebody else's order, or at
+    // a gateway that keeps a signed record in dec_not_confirmed — which the
+    // getresidcurrency step below overwrites with their own message text.
+    if (!$payemntcheck || (string) $payemntcheck['id_user'] !== (string) $from_id
+        || $payemntcheck['Payment_Method'] !== 'arze digital offline') {
+        return;
+    }
     if ($payemntcheck['payment_Status'] == "paid") {
         sendmessage($from_id, $textbotlang['users']['Balance']['alreadyConfirmed'], null, 'HTML');
         return;
@@ -5598,11 +5608,18 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     $format_balance = number_format($user['Balance'], 0);
     step('home', $from_id);
     $PaymentReport = select("Payment_report", "*", "id_order", $user['Processing_value'], "select");
-    $Paymentusercount = select("Payment_report", "*", "id_user", $PaymentReport['id_user'], "count");
     if ($PaymentReport == false) {
         sendmessage($from_id, $textbotlang['users']['Balance']['restartPurchaseOrPay'], $keyboard, 'HTML');
         return;
     }
+    // Same check as the entry above: Processing_value is written by several
+    // flows, and this step ends in an overwrite of the row's dec_not_confirmed.
+    if ((string) $PaymentReport['id_user'] !== (string) $from_id
+        || $PaymentReport['Payment_Method'] !== 'arze digital offline') {
+        sendmessage($from_id, $textbotlang['users']['Balance']['restartPurchaseOrPay'], $keyboard, 'HTML');
+        return;
+    }
+    $Paymentusercount = select("Payment_report", "*", "id_user", $PaymentReport['id_user'], "count");
     $Confirm_pay = json_encode([
         'inline_keyboard' => [
             [

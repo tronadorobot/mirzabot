@@ -136,13 +136,21 @@ https://دامنه-شما/payment/tronado.php
 | دلیل (در پیام، انگلیسی) | یعنی چه |
 |---|---|
 | `amount short` | مبلغِ تأییدشده در ترونادو کمتر از فاکتور بوده (کارت‌به‌کارتِ کمتر). خودتان تصمیم بگیرید چقدر شارژ شود. |
-| `order record unsealed or tampered` | کلید IPN را وسط سفارش‌های باز عوض کرده‌اید، یا رکورد سفارش دستکاری شده. آن سفارش را دستی شارژ کنید. |
+| `order record unsealed and toman paid below invoice` | رکورد سفارش قابل اعتماد نبوده و مبلغی که کاربر پرداخت کرده از فاکتور شما کمتر است. خودتان تصمیم بگیرید. |
+| `order record unsealed and the payment is not to this shop's wallet` | رکورد سفارش قابل اعتماد نبوده و واریز به ولت دیگری رفته. دستی بررسی کنید. |
+| `order record unsealed or tampered` | رکورد سفارش قابل اعتماد نبوده و راهی هم برای سنجیدن مبلغ نمانده (کال‌بک قدیمی بدون مبلغ تومانی). آن سفارش را دستی شارژ کنید. |
 | `status check unavailable` | سرور شما لحظه‌ای به ترونادو نرسیده؛ ترونادو تا چند ساعت و کرونِ هر ۳ دقیقه دوباره تلاش می‌کنند و معمولاً خودش حل می‌شود. |
 
 نکته‌های مهم:
 
-- **کلید امضای IPN را بی‌دلیل عوض نکنید** — سفارش‌های در جریان با کلید قبلی مهر
-  شده‌اند و پس از تعویض به‌صورت «tampered» گزارش می‌شوند.
+- **عوض کردن کلید امضای IPN مشکلی برای سفارش‌های باز درست نمی‌کند.** مهرِ روی
+  سفارش‌ها با کلید مخصوص خودِ ربات زده می‌شود، نه با کلید IPN؛ کلید قبلی هم یک
+  نسل نگه داشته می‌شود. اگر باز هم مهر جور در نیاید، مبلغ پرداختی با فاکتور خودتان
+  و ولت خودتان سنجیده می‌شود و در کانال گزارش هم بهتان اطلاع داده می‌شود.
+- این جبران فقط برای **اولین** کال‌بکِ پرداختِ هر سفارش کار می‌کند. سفارشی که یک
+  بار «شارژ نشد» گزارش شده، جواب ترونادو را گرفته و دیگر تلاش مجدد نمی‌شود و کرون
+  هم ردش می‌کند؛ برای آن‌ها یک بار دکمه **ارسال مجدد IPN** را از مینی‌اپ ترونادو
+  بزنید.
 - **کرون** خودکار اضافه می‌شود؛ اولین باری که بعد از نصب یا آپدیت وارد پنل ادمین
   شوید، خط `*/3 * * * * curl https://دامنه-شما/cronbot/tronado.php` ساخته می‌شود.
   کارِ دستی لازم نیست.
@@ -209,11 +217,21 @@ nothing until a human looks. Common reasons:
 | reason | meaning |
 |---|---|
 | `amount short (x of y TRX)` | the order was repriced on Tronado's side after creation (transfer smaller than the invoice). Decide the credit yourself. |
-| `order record unsealed or tampered` | the IPN signing key was rotated while orders were open, or the order row was edited in the DB. Credit that order by hand. |
+| `order record unsealed and toman paid below invoice (x of y)` | the order row could not be trusted and the buyer paid less than your invoice. Decide the credit yourself. |
+| `order record unsealed and the payment is not to this shop's wallet` | the order row could not be trusted and the payment went somewhere else. Check it by hand. |
+| `order record unsealed or tampered` | the order row could not be trusted and nothing is left to measure the payment against (an older callback with no toman figure). Credit that order by hand. |
 | `status check unavailable` (in error_log) | your server could not reach Tronado at that moment; Tronado retries for hours and the cron re-checks open orders every 3 minutes. |
 
-Do not rotate the IPN signing key casually: in-flight orders are sealed with
-the old key and will be reported as tampered afterwards.
+Rotating the IPN signing key is safe for open orders: they are sealed with the
+bot's own key, not the IPN key, and the previous IPN key is kept for one
+generation. If a seal still fails to verify, the payment is measured against
+your own invoice and your own wallet instead, and the report channel tells you
+it happened.
+
+That rescue applies to the *first* paid callback for an order. Once an order has
+already been reported as not credited, Tronado has been answered and stops
+retrying, and the 3-minute cron skips flagged rows — so an order that failed
+before you upgraded needs one manual **Resend IPN** from the Tronado mini app.
 
 ## Cron
 

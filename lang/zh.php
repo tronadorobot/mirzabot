@@ -4789,6 +4789,8 @@ f,n.n2',
 错误：%s',
                 'tronadoProblem' => '⭕️ Tronado 付款 %s（用户 %s）未入账：%s
 请手动检查。',
+                'tronadoUnsealedSettled' => '⚠️ Tronado 付款 %s 已入账，但订单记录的签名未通过验证，因此金额是按您自己的账单和钱包核对的。
+刚更换 IPN 密钥后出现属正常；否则请查看。',
                 'reportNowpayment' => '💵 新付款
 - 👤 用户用户名：@%s
 - 🆔用户数字 ID：%s

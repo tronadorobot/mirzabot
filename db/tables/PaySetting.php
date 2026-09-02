@@ -91,6 +91,14 @@ $values = [
     'statustronado' => 'offtronado',
     'apitronado' => '0',
     'ipnkeytronado' => '0',
+    // The key the IPN signing key last replaced, and this installation's own
+    // seal key. Seeded empty only so a fresh install has the rows; both are
+    // written by tronadoStoreSecret()/tronadoMetaKey(), which upsert, so no
+    // migration is needed for shops that upgrade without running bootstrap.
+    // (This seed list is INSERT IGNORE on every apply, so it never overwrites
+    // a key that has already been generated — see db/Schema.php::insert.)
+    'ipnkeyprevtronado' => '0',
+    'metakeytronado' => '0',
     'wallettronado' => '0',
     'minbalancetronado' => '50000',
     'maxbalancetronado' => '500000',

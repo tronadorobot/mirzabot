@@ -121,25 +121,18 @@ if (($paymentReport['payment_Status'] ?? '') === 'paid') {
 }
 
 if ($statusId === TRONADO_STATUS_PAYMENT_ACCEPTED && !empty($payload['IsPaid'])) {
-    $mismatch = tronadoPaidPayloadMismatch($paymentReport, $payload, true);
-    if ($mismatch !== '') {
-        tronadoReportProblem($paymentReport, 'ipn payload ' . $mismatch, $payload);
-        tronado_respond(200, ['ok' => false, 'error' => 'payload mismatch']);
-    }
-
-    // Authoritative second opinion, bound to this shop's API key: a signed
-    // callback that Tronado itself does not confirm is not credited. Short
-    // timeout: the whole exchange has to fit in Tronado's 5-second wait, and a
-    // slow answer is a 500 (retried) rather than a verdict.
-    $status = tronadoGetStatusByPaymentId($paymentId, 4);
-    if ($status === null) {
+    // The signed body first, then an authoritative second opinion bound to this
+    // shop's API key: a signed callback that Tronado itself does not confirm is
+    // not credited. Both live in tronadoPaidEvidence() so the primary/confirming
+    // distinction cannot drift apart between the two calls.
+    $evidence = tronadoPaidEvidence($paymentReport, $payload);
+    if ($evidence['stage'] === 'unavailable') {
         error_log("tronado: status check unavailable for {$paymentId}, asking for a retry");
         tronado_respond(500, ['ok' => false, 'error' => 'status check unavailable']);
     }
-    $mismatch = tronadoPaidPayloadMismatch($paymentReport, $status, false);
-    if ($mismatch !== '') {
-        tronadoReportProblem($paymentReport, 'status check ' . $mismatch, $status);
-        tronado_respond(200, ['ok' => false, 'error' => 'status mismatch']);
+    if ($evidence['reason'] !== '') {
+        tronadoReportProblem($paymentReport, $evidence['reason'], $evidence['payload']);
+        tronado_respond(200, ['ok' => false, 'error' => $evidence['stage'] === 'payload' ? 'payload mismatch' : 'status mismatch']);
     }
 
     // Verified. Acknowledge first, deliver second: claimPaymentPaid inside the

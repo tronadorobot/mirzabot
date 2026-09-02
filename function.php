@@ -964,12 +964,45 @@ function tronadoStoreMeta(string $orderId, array $meta): void
 }
 
 /**
- * The settlement anchor (token, invoiced TRX, wallet) carries an HMAC under
- * the IPN signing key. dec_not_confirmed is also written by upstream's receipt
- * flows from buyer-controlled input, and a buyer must not be able to move the
- * bar the paid-checks measure against.
+ * The settlement anchor (token, invoiced TRX, wallet) carries an HMAC.
+ * dec_not_confirmed is also written by upstream's receipt flows from
+ * buyer-controlled input, and a buyer must not be able to move the bar the
+ * paid-checks measure against.
+ *
+ * The seal key is this installation's own, generated once and never pasted or
+ * displayed. It is deliberately NOT the IPN signing key: that one is typed in by
+ * hand, so it gets corrected and rotated, and keying the seal on it left every
+ * order created before the change permanently unsettleable.
+ *
+ * "Not displayed" is not "secret from the shop's staff": cronbot/backupbot.php
+ * mysqldumps the whole database to the report channel every five hours, this row
+ * with it, exactly as it already does for the API key and the IPN signing key.
+ * The seal is an integrity check against buyer-supplied input, not a defence
+ * against an admin — and a forged seal still has to clear the same amount bar.
  */
-function tronadoMetaSignature(array $meta): string
+function tronadoMetaKey(): string
+{
+    global $pdo;
+    $key = tronadoSetting('metakeytronado');
+    if ($key !== '') {
+        return $key;
+    }
+    // Upsert rather than update: on an installation that predates the setting
+    // row an UPDATE matches nothing, and a key that never lands would be
+    // regenerated on every request. Losing the race is harmless — the row keeps
+    // whichever key got there first and both callers read that one back.
+    // TRIM here because tronadoSetting() trims before deciding a value is unset:
+    // if the two disagree, a row holding ' 0 ' is set to SQL and unset to PHP,
+    // and every request would regenerate a key that never takes.
+    $stmt = $pdo->prepare("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('metakeytronado', :value)
+        ON DUPLICATE KEY UPDATE ValuePay = IF(TRIM(ValuePay) IN ('', '0'), VALUES(ValuePay), ValuePay)");
+    $stmt->execute([':value' => bin2hex(random_bytes(32))]);
+    clearSelectCache('PaySetting');
+
+    return tronadoSetting('metakeytronado');
+}
+
+function tronadoMetaSignature(array $meta, string $key): string
 {
     $canonical = json_encode([
         'token' => (string) ($meta['token'] ?? ''),
@@ -977,30 +1010,83 @@ function tronadoMetaSignature(array $meta): string
         'wallet' => (string) ($meta['wallet'] ?? ''),
     ]);
 
-    return hash_hmac('sha256', (string) $canonical, tronadoSetting('ipnkeytronado'));
+    return hash_hmac('sha256', (string) $canonical, $key);
 }
 
 function tronadoSealMeta(array $meta): array
 {
-    $meta['sig'] = tronadoMetaSignature($meta);
+    $key = tronadoMetaKey();
+    if ($key === '') {
+        // The key could not be stored, so a signature written here is one that
+        // nothing will ever verify. Leave the record honestly unsealed rather
+        // than sealed under nothing; the invoice-denominated bar still covers it.
+        error_log('tronado: seal key unavailable, order record left unsealed');
+        unset($meta['sig']);
+
+        return $meta;
+    }
+    $meta['sig'] = tronadoMetaSignature($meta, $key);
 
     return $meta;
+}
+
+/**
+ * Every key a stored seal may legitimately carry: this installation's seal key,
+ * plus the IPN signing key (orders sealed before the seal moved off it) and the
+ * key it replaced (orders sealed before the admin last corrected it). Without
+ * the two legacy entries, upgrading the bot or fixing a mistyped IPN key would
+ * strand orders that are already paid for.
+ */
+function tronadoSealKeys(): array
+{
+    $keys = [];
+    foreach ([tronadoMetaKey(), tronadoSetting('ipnkeytronado'), tronadoSetting('ipnkeyprevtronado')] as $key) {
+        if ($key !== '' && !in_array($key, $keys, true)) {
+            $keys[] = $key;
+        }
+    }
+
+    return $keys;
 }
 
 function tronadoMetaIsSealed(array $meta): bool
 {
     $sig = (string) ($meta['sig'] ?? '');
+    if ($sig === '') {
+        return false;
+    }
+    foreach (tronadoSealKeys() as $key) {
+        if (hash_equals(tronadoMetaSignature($meta, $key), $sig)) {
+            return true;
+        }
+    }
 
-    return $sig !== '' && tronadoSetting('ipnkeytronado') !== '' && hash_equals(tronadoMetaSignature($meta), $sig);
+    return false;
 }
 
 /** Store a gateway secret without update()'s plaintext audit line in log.txt. */
 function tronadoStoreSecret(string $name, string $value): void
 {
     global $pdo;
-    $stmt = $pdo->prepare("UPDATE PaySetting SET ValuePay = :value WHERE NamePay = :name");
+    $stmt = $pdo->prepare("INSERT INTO PaySetting (NamePay, ValuePay) VALUES (:name, :value)
+        ON DUPLICATE KEY UPDATE ValuePay = VALUES(ValuePay)");
     $stmt->execute([':value' => $value, ':name' => $name]);
     clearSelectCache('PaySetting');
+}
+
+/**
+ * Replace the IPN signing key, remembering the outgoing one so that orders
+ * already invoiced under it still verify. Only one generation is kept: that
+ * covers the correction an admin makes on the day they set the gateway up,
+ * which is when it actually happens.
+ */
+function tronadoRotateIpnKey(string $value): void
+{
+    $current = tronadoSetting('ipnkeytronado');
+    if ($current !== '' && $current !== $value) {
+        tronadoStoreSecret('ipnkeyprevtronado', $current);
+    }
+    tronadoStoreSecret('ipnkeytronado', $value);
 }
 
 /**
@@ -1010,19 +1096,25 @@ function tronadoStoreSecret(string $name, string $value): void
  *
  * $expectToken: the IPN's UniqueCode is the GetOrderToken token, the status
  * endpoint's is not, so the token is only compared on IPN payloads.
+ *
+ * $isConfirmation: this payload is the second opinion on a settlement another
+ * payload already opened, rather than the evidence the settlement rests on.
  */
-function tronadoPaidPayloadMismatch(array $paymentReport, array $payload, bool $expectToken): string
+function tronadoPaidPayloadMismatch(array $paymentReport, array $payload, bool $expectToken, bool $isConfirmation = false): string
 {
-    $meta = tronadoOrderMeta($paymentReport);
-    if (!tronadoMetaIsSealed($meta)) {
-        return 'order record unsealed or tampered';
-    }
     $paymentId = (string) ($payload['PaymentId'] ?? $payload['PaymentID'] ?? '');
     if ($paymentId === '' || $paymentId !== (string) $paymentReport['id_order']) {
         return 'payment id mismatch';
     }
     if ((int) ($payload['OrderStatusID'] ?? 0) !== TRONADO_STATUS_PAYMENT_ACCEPTED || empty($payload['IsPaid'])) {
         return 'not PaymentAccepted';
+    }
+    $meta = tronadoOrderMeta($paymentReport);
+    if (!tronadoMetaIsSealed($meta)) {
+        // The order record cannot be trusted, but the buyer did pay. Measure the
+        // payment against the two things left that a buyer cannot touch instead
+        // of stranding their money forever.
+        return tronadoUnsealedPayloadMismatch($paymentReport, $payload, $isConfirmation);
     }
     if ($expectToken) {
         $token = (string) ($meta['token'] ?? '');
@@ -1057,6 +1149,89 @@ function tronadoPaidPayloadMismatch(array $paymentReport, array $payload, bool $
     }
 
     return '';
+}
+
+/**
+ * The bar for a paid order whose seal does not verify — the seal key is gone
+ * with an IPN-key correction, or an upstream receipt flow overwrote
+ * dec_not_confirmed. Nothing here is read from the order record: the wallet is
+ * the shop's own setting, the invoice is Payment_report.price (written once at
+ * order creation and never updated afterwards), and the amounts are Tronado's,
+ * carried by a payload that already proved an HMAC under the IPN signing key or
+ * came back from a call bound to the shop's API key. A buyer can move none of
+ * them.
+ *
+ * It is not the same bar as the sealed path, and should not be read as one: the
+ * sealed path measures delivered TRX against the invoiced TRX exactly, which
+ * only the order record can say. What is left is the toman layer, so this
+ * compares like with like — TomanAmountWithoutWage is Tronado's fee-free base
+ * and is what Payment_report.price is denominated in. UserPaidTomanAmount is
+ * the buyer's fee-inclusive total (the fee runs to ~14%), so measuring the
+ * invoice against that would quietly discount it by the whole fee.
+ *
+ * Both toman figures are v5-only and the status endpoint reports neither, so a
+ * poll on its own cannot clear an unsealed order — those still stop for a human.
+ */
+function tronadoUnsealedPayloadMismatch(array $paymentReport, array $payload, bool $isConfirmation): string
+{
+    $wallet = tronadoSetting('wallettronado');
+    if ($wallet === '' || (string) ($payload['Wallet'] ?? '') !== $wallet) {
+        return 'order record unsealed and the payment is not to this shop\'s wallet';
+    }
+    if ($isConfirmation) {
+        // Tronado agreeing that this order is paid, to this shop's wallet, is
+        // everything a second opinion can add here: the amount bar was already
+        // met by the signed payload that opened the settlement, and the status
+        // endpoint does not report the toman the buyer paid.
+        return '';
+    }
+    $price = intval($paymentReport['price'] ?? 0);
+    $paid = $payload['TomanAmountWithoutWage'] ?? null;
+    if (!is_numeric($paid)) {
+        $paid = $payload['UserPaidTomanAmount'] ?? null;
+    }
+    if ($price <= 0 || !is_numeric($paid)) {
+        return 'order record unsealed or tampered';
+    }
+    if ((float) $paid < $price * 0.9) {
+        return 'order record unsealed and toman paid below invoice (' . $paid . ' of ' . $price . ')';
+    }
+
+    return '';
+}
+
+/**
+ * The whole evidence chain behind crediting a paid order: the signed IPN body
+ * is the primary evidence and carries the amount bar, then Tronado's own answer
+ * under the shop's API key is the second opinion. Both calls live here so that
+ * the confirmation is only ever asked to confirm — the distinction that decides
+ * whether an unsealed record may settle at all — rather than that riding on an
+ * argument a caller could drop.
+ *
+ * $statusFetcher is the seam the harness drives this through without a real key.
+ *
+ * Returns `reason` = '' when the order settles; otherwise `stage` says which
+ * step refused: 'payload', 'status', or 'unavailable' (ask Tronado to retry).
+ */
+function tronadoPaidEvidence(array $paymentReport, array $payload, ?callable $statusFetcher = null): array
+{
+    $mismatch = tronadoPaidPayloadMismatch($paymentReport, $payload, true);
+    if ($mismatch !== '') {
+        return ['reason' => 'ipn payload ' . $mismatch, 'stage' => 'payload', 'payload' => $payload];
+    }
+    // Short timeout: the whole exchange has to fit in Tronado's 5-second wait,
+    // and a slow answer is a retry rather than a verdict.
+    $fetch = $statusFetcher ?? static fn(string $paymentId): ?array => tronadoGetStatusByPaymentId($paymentId, 4);
+    $status = $fetch((string) $paymentReport['id_order']);
+    if ($status === null) {
+        return ['reason' => 'status check unavailable', 'stage' => 'unavailable', 'payload' => $payload];
+    }
+    $mismatch = tronadoPaidPayloadMismatch($paymentReport, $status, false, true);
+    if ($mismatch !== '') {
+        return ['reason' => 'status check ' . $mismatch, 'stage' => 'status', 'payload' => $status];
+    }
+
+    return ['reason' => '', 'stage' => null, 'payload' => $status];
 }
 
 /**
@@ -1113,15 +1288,42 @@ function tronadoSettleOrder(array $paymentReport, array $confirmed, string $sour
     $meta['settled'] = [
         'source' => $source,
         'at' => gmdate('c'),
+        // False means the seal did not verify and the order was settled on the
+        // invoice-denominated bar instead. Nothing is wrong with the money, but
+        // the record is worth a look: it is how a lost seal key shows up.
+        'sealed' => tronadoMetaIsSealed($meta),
         'hash' => $confirmed['Hash'] ?? null,
         'trx' => $confirmed['TronAmount'] ?? null,
         'user_paid_toman' => $confirmed['UserPaidTomanAmount'] ?? null,
         'toman_without_wage' => $confirmed['TomanAmountWithoutWage'] ?? null,
     ];
+    // An earlier attempt that stopped for a human is resolved by this credit, so
+    // the live flag goes — but it is kept alongside, payload and all. It is the
+    // only record of what was refused first, and an order that settles after a
+    // refusal is exactly the one somebody will want to reconstruct.
+    if (isset($meta['problem'])) {
+        $meta['resolved_problem'] = $meta['problem'];
+        unset($meta['problem']);
+    }
     tronadoStoreMeta($orderId, $meta);
 
     $setting = select("setting", "*");
     $channel = (string) ($setting['Channel_Report'] ?? '');
+    if (empty($meta['settled']['sealed'])) {
+        // Say it out loud rather than leaving it in a JSON column nobody reads.
+        // Expected for a day after an IPN-key correction; at any other time it
+        // means an order record was rewritten, and that is worth knowing.
+        error_log("tronado: order {$orderId} settled on the invoice bar, seal did not verify");
+        if ($channel !== '') {
+            $errorreport = select("topicid", "idreport", "report", "errorreport", "select")['idreport'] ?? null;
+            telegram('sendmessage', [
+                'chat_id' => $channel,
+                'message_thread_id' => $errorreport,
+                'text' => sprintf($textbotlang['paymentGateway']['tronadoUnsealedSettled'], $orderId),
+                'parse_mode' => 'HTML',
+            ]);
+        }
+    }
     try {
         DirectPayment($orderId, "../images.jpg");
     } catch (Throwable $error) {

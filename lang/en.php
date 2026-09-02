@@ -4789,6 +4789,8 @@ Payment method : First Rial currency',
 Error: %s',
                 'tronadoProblem' => '⭕️ Tronado payment %s (user %s) was NOT credited: %s
 Please check it manually.',
+                'tronadoUnsealedSettled' => '⚠️ Tronado payment %s was credited, but the seal on the order record did not verify, so the amount was measured against your own invoice and wallet.
+Normal right after you change the IPN signing key; otherwise worth a look.',
                 'reportNowpayment' => '💵 New payment
 - 👤 User username : @%s
 - 🆔User numeric ID : %s

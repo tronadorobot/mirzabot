@@ -6483,7 +6483,9 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     if (!preg_match('/^\S{16,300}$/', $candidate)) {
         sendmessage($from_id, $textbotlang['keyboard']['tronadoValueInvalid'], $tronadokeyboard, 'HTML');
     } else {
-        tronadoStoreSecret('ipnkeytronado', $candidate);
+        // Keeps the outgoing key on record: orders invoiced under it are
+        // already sealed with it, and must stay settleable.
+        tronadoRotateIpnKey($candidate);
         sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $tronadokeyboard, 'HTML');
     }
     step('home', $from_id);
