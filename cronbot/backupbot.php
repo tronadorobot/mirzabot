@@ -148,6 +148,16 @@ function backupDumpDatabaseWithPdo(PDO $pdo, $targetFile)
 
 $reportbackup = select("topicid", "idreport", "report", "backupfile", "select")['idreport'];
 $destination = getcwd();
+// Backup artefacts must never be written inside the web root. Cron reaches
+// this script over HTTP, so getcwd() is cronbot/ and anything left beside it
+// is fetchable for as long as it exists -- and the PharData fallback added
+// upstream in 0.5.1 emits .tar.gz, which no <Files> rule used to cover.
+// Build in the system temp dir; fall back to the web root only if that is
+// unusable, where the .htaccess deny rules now catch it.
+$backupWorkDir = sys_get_temp_dir();
+if (!is_dir($backupWorkDir) || !is_writable($backupWorkDir)) {
+    $backupWorkDir = $destination;
+}
 $setting = select("setting", "*");
 $canSendReport = !isTelegramChatIdEmpty($setting['Channel_Report'] ?? '');
 if (!$canSendReport) {
@@ -162,7 +172,7 @@ if ($botlist) {
             $botFolder . '/data',
             $botFolder . '/product.json',
             $botFolder . '/product_name.json',
-        ], $destination . '/file');
+        ], $backupWorkDir . '/file');
         if ($archive === null) {
             continue;
         }
@@ -176,7 +186,7 @@ if ($botlist) {
     }
 }
 
-$backup_file_name = 'backup_' . date("Y-m-d") . '.sql';
+$backup_file_name = $backupWorkDir . '/backup_' . date("Y-m-d") . '.sql';
 $dbhost = empty($dbhost) ? "localhost" : $dbhost;
 $isDumped = false;
 

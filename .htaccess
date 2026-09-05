@@ -29,3 +29,10 @@
 <Files "*.zip">
     Require all denied
 </Files>
+# Backup artefacts: the archiver has used .zip and, since upstream 0.5.1, a
+# PharData .tar.gz fallback. Deny the whole family by extension so a leftover
+# archive from any build -- including one already sitting on a live host --
+# is never served.
+<FilesMatch "\.(tar|gz|tgz|bz2|xz|7z|rar)$">
+    Require all denied
+</FilesMatch>

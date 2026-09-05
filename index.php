@@ -5528,7 +5528,16 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         return;
     }
     $payemntcheck = select("Payment_report", "*", "id_order", $dataget[1], "select");
-    if (!is_array($payemntcheck) || (string) $payemntcheck['id_user'] !== (string) $from_id) {
+    // Same reasoning as the sendresidarze- entry below: callback data is
+    // whatever the client sent, not whatever button we drew. Without the
+    // method clause a buyer aims this card-to-card receipt flow at their own
+    // Tronado order -- the cooldown query above only looks at 'cart to cart',
+    // so it does not see it either. That takes the order out of the 'Unpaid'
+    // set cronbot/tronado.php polls, killing the lost-IPN safety net, and puts
+    // a Confirm_pay_ button for it in front of an admin who is looking at what
+    // reads as an ordinary receipt.
+    if (!is_array($payemntcheck) || (string) $payemntcheck['id_user'] !== (string) $from_id
+        || $payemntcheck['Payment_Method'] !== 'cart to cart') {
         return;
     }
     if ($payemntcheck['payment_Status'] == "paid") {
@@ -5703,6 +5712,15 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     step('home', $from_id);
     $PaymentReport = select("Payment_report", "*", "id_order", $user['Processing_value']);
     if ($PaymentReport == false) {
+        sendmessage($from_id, $textbotlang['users']['infoFetchErrorRestart'], $keyboard, 'HTML');
+        return;
+    }
+    // Processing_value is written by many flows and this step both flips the
+    // row to 'waiting' and hands admins a Confirm_pay_ button for it, so the
+    // row has to belong to the sender and carry the one method this flow
+    // serves -- the same guard getresidcurrency already carries.
+    if ((string) $PaymentReport['id_user'] !== (string) $from_id
+        || $PaymentReport['Payment_Method'] !== 'cart to cart') {
         sendmessage($from_id, $textbotlang['users']['infoFetchErrorRestart'], $keyboard, 'HTML');
         return;
     }
