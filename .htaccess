@@ -36,3 +36,13 @@
 <FilesMatch "\.(tar|gz|tgz|bz2|xz|7z|rar)$">
     Require all denied
 </FilesMatch>
+
+Options -Indexes
+
+<FilesMatch "^error_log$|\.log$|\.log\.[0-9]+$">
+    Require all denied
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>

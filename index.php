@@ -18,6 +18,9 @@ $text = restoreCustomEmojiLabel($text);
 if (!checktelegramip())
     die("Unauthorized access");
 #-----------end telegram_ip_ranges------------#
+$webhookSecret = ensureWebhookSecret();
+if (!$webhookSecret['created'] && $webhookSecret['secret'] !== '' && !webhookSecretMatches($webhookSecret['secret']))
+    die("Unauthorized access");
 if ($is_bot)
     return;
 if (isset($update['chat_member'])) {
@@ -4681,13 +4684,6 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     step('get_step_payment', $from_id);
 } elseif ($user['step'] == "get_step_payment") {
     if ($datain == "cart_to_offline") {
-        $checkpay = $pdo->prepare("SELECT * FROM Payment_report WHERE id_user = :user_id AND payment_Status = 'waiting'");
-        $checkpay->bindValue(':user_id', $from_id, PDO::PARAM_STR);
-        $checkpay->execute();
-        if (($checkpay)->rowCount() != 0) {
-            sendmessage($from_id, $textbotlang['users']['Balance']['pendingPayment'], null, 'HTML');
-            return;
-        }
         $mainbalance = select("PaySetting", "ValuePay", "NamePay", "minbalancecart", "select")['ValuePay'];
         $maxbalance = select("PaySetting", "ValuePay", "NamePay", "maxbalancecart", "select")['ValuePay'];
         if ($user['Processing_value'] < $mainbalance || $user['Processing_value'] > $maxbalance) {
@@ -5163,16 +5159,16 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
             return;
         }
 
-        // The daily spend throttle every other rial gateway has. Scoped to this
-        // gateway's own rows — the copy on `iranpay3` reads `Currency Rial 1`,
-        // which throttles the wrong gateway, so it is not copied verbatim.
-        $dateacc = date('Y/m/d');
-        $stmt = $pdo->prepare("SELECT SUM(price) as price FROM Payment_report WHERE Payment_Method = 'AbanGateway' AND time LIKE :today");
-        $stmt->execute([':today' => '%' . $dateacc . '%']);
-        $sumpayment = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (intval($sumpayment['price']) > 1000000) {
-            sendmessage($from_id, $textbotlang['users']['Balance']['queueBusy'], null, 'HTML');
-            return;
+        $dailylimit = intval(getPaySettingValue('dailylimitiranpay4', '0'));
+        if ($dailylimit > 0) {
+            $dateacc = date('Y/m/d');
+            $stmt = $pdo->prepare("SELECT SUM(price) as price FROM Payment_report WHERE Payment_Method = 'AbanGateway' AND payment_Status = 'paid' AND time LIKE :today");
+            $stmt->execute([':today' => '%' . $dateacc . '%']);
+            $sumpayment = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (intval($sumpayment['price']) >= $dailylimit) {
+                sendmessage($from_id, $textbotlang['users']['Balance']['queueBusy'], null, 'HTML');
+                return;
+            }
         }
 
         deletemessage($from_id, $message_id);
