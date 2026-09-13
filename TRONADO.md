@@ -152,7 +152,8 @@ https://دامنه-شما/payment/tronado.php
   هم ردش می‌کند؛ برای آن‌ها یک بار دکمه **ارسال مجدد IPN** را از مینی‌اپ ترونادو
   بزنید.
 - **کرون** خودکار اضافه می‌شود؛ اولین باری که بعد از نصب یا آپدیت وارد پنل ادمین
-  شوید، خط `*/3 * * * * curl https://دامنه-شما/cronbot/tronado.php` ساخته می‌شود.
+  شوید، خط `*/3 * * * * php …/cronbot/tronado.php` ساخته می‌شود (از نسخه ۰.۵.۵
+  کرون‌ها مستقیم با PHP اجرا می‌شوند و خط قدیمیِ `curl` خودکار پاک می‌شود).
   کارِ دستی لازم نیست.
 
 برای هر مشکلی: [@trndsupport](https://t.me/trndsupport)
@@ -236,8 +237,9 @@ before you upgraded needs one manual **Resend IPN** from the Tronado mini app.
 ## Cron
 
 The first time an admin opens the admin panel after updating, the bot adds
-`*/3 * * * * curl https://your-domain/cronbot/tronado.php` itself. Nothing
-to do.
+`*/3 * * * * php <bot dir>/cronbot/tronado.php` itself (since 0.5.5 Mirza runs
+its crons through the PHP CLI and removes the old `curl https://your-domain/cronbot/…`
+lines, the Tronado one included). Nothing to do.
 
 ## Source
 

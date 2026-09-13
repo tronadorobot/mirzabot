@@ -1,4 +1,5 @@
 <?php
+chdir(__DIR__);
 require_once '../config.php';
 require_once '../function.php';
 $textbotlang = languagechange();
@@ -148,9 +149,10 @@ function backupDumpDatabaseWithPdo(PDO $pdo, $targetFile)
 
 $reportbackup = select("topicid", "idreport", "report", "backupfile", "select")['idreport'];
 $destination = getcwd();
-// Backup artefacts must never be written inside the web root. Cron reaches
-// this script over HTTP, so getcwd() is cronbot/ and anything left beside it
-// is fetchable for as long as it exists -- and the PharData fallback added
+// Backup artefacts must never be written inside the web root. getcwd() is
+// cronbot/ (chdir above for the PHP CLI cron; the web server's cwd on older
+// installs that still curl it), which is served over HTTP, so anything left
+// beside it is fetchable for as long as it exists -- and the PharData fallback added
 // upstream in 0.5.1 emits .tar.gz, which no <Files> rule used to cover.
 // Build in the system temp dir; fall back to the web root only if that is
 // unusable, where the .htaccess deny rules now catch it.

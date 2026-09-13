@@ -12,6 +12,7 @@
  * hence the pause between calls; the batch is bounded so one run always ends
  * well inside the 3-minute cron interval (100 rows x 0.6 s).
  */
+chdir(__DIR__);
 ini_set('error_log', 'error_log');
 date_default_timezone_set('Asia/Tehran');
 require_once __DIR__ . '/../config.php';
